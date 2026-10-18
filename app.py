@@ -49,9 +49,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ⭐️ 선물 티커로 변경 (YM=F: 다우선물, ES=F: S&P선물, NQ=F: 나스닥선물)
 @st.cache_data(ttl=60) 
 def get_market_indices():
-    tickers = {"10년물 금리": "^TNX", "다우": "^DJI", "S&P500": "^GSPC", "나스닥": "^IXIC", "WTI": "CL=F"}
+    tickers = {"10년물 금리": "^TNX", "다우 선물": "YM=F", "S&P500 선물": "ES=F", "나스닥 선물": "NQ=F", "WTI": "CL=F"}
     results = []
     for name, ticker in tickers.items():
         try:
@@ -147,7 +148,6 @@ if ticker:
             color = "text-red" if change < 0 else "text-green"
             arrow = "▼" if change < 0 else "▲"
             
-            # --- 4대 명인 로직 ---
             if current_price >= box_high and vol_ratio >= 1.5:
                 action, css_class, reason = "🔥 STRONG BUY", "text-green", "박스권 돌파 + 거래량 폭발"
                 stop_loss = current_price * 0.95
@@ -173,7 +173,6 @@ if ticker:
                 stop_loss = current_price * 0.955
                 target_1, target_2 = current_price * 1.05, current_price * 1.08
 
-            # 1. 메인 카드
             st.markdown(f"""
             <div class="main-card">
                 <div style="display:flex; justify-content:space-between; align-items:flex-start;">
@@ -190,7 +189,6 @@ if ticker:
             </div>
             """, unsafe_allow_html=True)
             
-            # 2. 글로벌 지수
             indices_data = get_market_indices()
             html_indices = '<div class="index-wrapper">'
             for idx in indices_data:
@@ -206,7 +204,6 @@ if ticker:
             html_indices += '</div>'
             st.markdown(html_indices, unsafe_allow_html=True)
 
-            # 3. AI 매니저 및 매매 가이드
             st.markdown(f"""
             <div class="detail-card">
                 <div class="text-white" style="margin-bottom: 8px;">🧠 4대 명인 종합 분석 (아이렌봇 로직)</div>
@@ -232,7 +229,6 @@ if ticker:
             </div>
             """, unsafe_allow_html=True)
 
-            # 4. 차트 및 보조지표 (뉴스보다 위로 올림)
             st.markdown("<br>", unsafe_allow_html=True)
             auto_refresh = st.checkbox("🔄 1분마다 자동 새로고침 (실시간 감시)", value=False)
             if auto_refresh:
@@ -298,6 +294,9 @@ if ticker:
             colors = ['red' if row['Close'] >= row['Open'] else 'blue' for index, row in hist.iterrows()]
             fig.add_trace(go.Bar(x=hist.index, y=hist['Volume'], marker_color=colors, name='거래량'), row=2, col=1)
 
+            fig.add_hline(y=box_high, line_dash="dot", line_color="red", line_width=1, annotation_text=f"최고 {box_high:,.2f}", annotation_position="top left", annotation_font_color="red", row=1, col=1)
+            fig.add_hline(y=box_low, line_dash="dot", line_color="#00ff00", line_width=1, annotation_text=f"최저 {box_low:,.2f}", annotation_position="bottom left", annotation_font_color="#00ff00", row=1, col=1)
+
             fig.update_layout(
                 template='plotly_dark', paper_bgcolor='#0b0f19', plot_bgcolor='#0b0f19', height=550, margin=dict(l=10, r=85, t=30, b=10), xaxis_rangeslider_visible=False, showlegend=True,
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=10)),
@@ -308,8 +307,7 @@ if ticker:
 
             st.plotly_chart(fig, use_container_width=True)
 
-            # 5. 실시간 뉴스 (차트 아래 맨 밑으로 이동)
-            st.markdown("<br><br>", unsafe_allow_html=True) # 차트와 뉴스 사이 간격 띄우기
+            st.markdown("<br><br>", unsafe_allow_html=True)
             st.markdown(f"##### 📰 {ticker} 실시간 뉴스 (Google)")
             news_list = get_google_news(ticker)
             if news_list:
