@@ -1,4 +1,4 @@
-.import streamlit as st
+import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -49,7 +49,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ⭐️ 선물 티커로 변경 (YM=F: 다우선물, ES=F: S&P선물, NQ=F: 나스닥선물)
 @st.cache_data(ttl=60) 
 def get_market_indices():
     tickers = {"10년물 금리": "^TNX", "다우 선물": "YM=F", "S&P500 선물": "ES=F", "나스닥 선물": "NQ=F", "WTI": "CL=F"}
