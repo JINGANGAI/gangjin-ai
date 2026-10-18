@@ -293,8 +293,8 @@ if ticker:
             colors = ['red' if row['Close'] >= row['Open'] else 'blue' for index, row in hist.iterrows()]
             fig.add_trace(go.Bar(x=hist.index, y=hist['Volume'], marker_color=colors, name='거래량'), row=2, col=1)
 
-            fig.add_hline(y=box_high, line_dash="dot", line_color="red", line_width=1, annotation_text=f"최고 {box_high:,.2f}", annotation_position="top left", annotation_font_color="red", row=1, col=1)
-            fig.add_hline(y=box_low, line_dash="dot", line_color="#00ff00", line_width=1, annotation_text=f"최저 {box_low:,.2f}", annotation_position="bottom left", annotation_font_color="#00ff00", row=1, col=1)
+            fig.add_hline(y=box_high, line_dash="dot", line_color="red", line_width=1, annotation_text=f"20일 고점 {box_high:,.2f}", annotation_position="top left", annotation_font_color="red", row=1, col=1)
+            fig.add_hline(y=box_low, line_dash="dot", line_color="#00ff00", line_width=1, annotation_text=f"20일 저점 {box_low:,.2f}", annotation_position="bottom left", annotation_font_color="#00ff00", row=1, col=1)
 
             fig.update_layout(
                 template='plotly_dark', paper_bgcolor='#0b0f19', plot_bgcolor='#0b0f19', height=550, margin=dict(l=10, r=85, t=30, b=10), xaxis_rangeslider_visible=False, showlegend=True,
