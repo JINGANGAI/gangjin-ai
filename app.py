@@ -51,6 +51,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# --- 데이터 로딩 함수들 ---
 @st.cache_data(ttl=60) 
 def get_market_indices():
     tickers = {"10년물 금리": "^TNX", "다우 선물": "YM=F", "S&P500 선물": "ES=F", "나스닥 선물": "NQ=F", "WTI": "CL=F"}
@@ -69,22 +70,19 @@ def get_market_indices():
             results.append({"name": name, "price": 0, "change": 0})
     return results
 
-# ⭐️ 상단바용 (BTC, 환율) 데이터 가져오기
 @st.cache_data(ttl=60)
 def get_top_bar_data():
     try:
-        # BTC 현재가 및 전일 종가
         btc_data = yf.Ticker("BTC-USD").history(period="2d")
         btc_price = btc_data['Close'].iloc[-1]
         btc_prev = btc_data['Close'].iloc[-2]
         
-        # 달러/원 환율
         usd_krw_data = yf.Ticker("KRW=X").history(period="1d")
         usd_krw = usd_krw_data['Close'].iloc[-1]
         
         return btc_price, btc_price - btc_prev, usd_krw
     except Exception:
-        return 81402, 0, 1350.0 # 에러 시 임시값
+        return 81402, 0, 1350.0
 
 @st.cache_data(ttl=300) 
 def get_google_news(ticker):
@@ -177,23 +175,40 @@ def scan_watchlist(ticker_string):
     signals.sort(key=lambda x: 0 if "PANIC" in x["action"] else (1 if "STRONG" in x["action"] else 2))
     return signals
 
-# ⭐️ 상단바 렌더링 (미국 동부 시간 + 실시간 환율 + BTC 색상)
-try:
-    et = pytz.timezone('US/Eastern')
-    now_et = datetime.now(et)
-    time_str = now_et.strftime('%H:%M:%S ET')
-except:
-    time_str = time.strftime('%H:%M:%S')
+# --- 상단바 및 자동 새로고침 ---
+# 30초마다 데이터 갱신 (BTC, 환율)
+st_autorefresh(interval=30000, key="top_bar_refresh")
 
 btc_price, btc_change, usd_krw = get_top_bar_data()
 btc_color = "text-green" if btc_change >= 0 else "text-red"
 btc_arrow = "▲" if btc_change >= 0 else "▼"
 
+# ⭐️ 자바스크립트로 1초마다 째깍거리는 미국 시간 구현
 st.markdown(f"""
 <div style="display:flex; justify-content:space-between; align-items:center; color:#8b949e; font-size:13px; margin-bottom: 10px; padding-left: 5px;">
-    <span>📈 LIVE | {time_str}</span>
+    <span>📈 LIVE | <span id="us-clock">--:--:-- ET</span></span>
     <span>BTC <span class="{btc_color}">{btc_arrow}${btc_price:,.0f}</span> | 환율 {usd_krw:,.0f}원</span>
 </div>
+
+<script>
+    function updateClock() {{
+        const now = new Date();
+        const options = {{ 
+            timeZone: 'America/New_York', 
+            hour12: false, 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit' 
+        }};
+        const timeString = now.toLocaleTimeString('en-US', options) + ' ET';
+        const clockElement = document.getElementById('us-clock');
+        if (clockElement) {{
+            clockElement.innerText = timeString;
+        }}
+    }}
+    setInterval(updateClock, 1000);
+    updateClock();
+</script>
 """, unsafe_allow_html=True)
 
 tab1, tab2 = st.tabs(["📊 개별 종목 분석", "🎯 100종목 스캐너"])
@@ -368,7 +383,7 @@ with tab1:
                 st.markdown("<br>", unsafe_allow_html=True)
                 auto_refresh = st.checkbox("🔄 1분마다 자동 새로고침 (실시간 감시)", value=False)
                 if auto_refresh:
-                    st_autorefresh(interval=60000, key="auto_refresh") 
+                    st_autorefresh(interval=60000, key="auto_refresh_tab1") 
 
                 st.markdown("##### 📊 보조지표 설정")
                 col1, col2, col3 = st.columns(3)
