@@ -1,4 +1,4 @@
-import streamlit as st
+ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -99,14 +99,11 @@ def get_gamma_wall(ticker, exp_date):
     except Exception:
         return None, None
 
-# ⭐️ 100종목 스캐너 함수 (병렬 다운로드)
-@st.cache_data(ttl=180) # 3분 캐시
+@st.cache_data(ttl=180) 
 def scan_watchlist(ticker_string):
     tickers = [t.strip().upper() for t in ticker_string.replace(',', ' ').split() if t.strip()]
     if not tickers:
         return []
-    
-    # 한 번에 여러 종목 데이터 다운로드 (속도 향상)
     try:
         data = yf.download(tickers, period="3mo", group_by='ticker', threads=True, progress=False)
     except Exception:
@@ -139,7 +136,6 @@ def scan_watchlist(ticker_string):
             avg_vol = vol.rolling(window=20).mean().iloc[-1]
             vol_ratio = vol.iloc[-1] / avg_vol if avg_vol else 1.0
             
-            # 4대 명인 로직 적용
             action = "WAIT"
             if current_price >= box_high and vol_ratio >= 1.5:
                 action = "🔥 STRONG BUY"
@@ -159,22 +155,19 @@ def scan_watchlist(ticker_string):
         except Exception:
             pass
             
-    # 신호가 강한 순서대로 정렬 (PANIC BUY -> STRONG BUY -> BUY)
     signals.sort(key=lambda x: 0 if "PANIC" in x["action"] else (1 if "STRONG" in x["action"] else 2))
     return signals
 
-# --- 메인 화면 시작 ---
 st.markdown(f"""
 <div style="display:flex; justify-content:space-between; color:#8b949e; font-size:13px; margin-bottom: 10px; padding-left: 5px;">
     <span>📈 LIVE MARKET | {time.strftime('%H:%M:%S')} | BTC $81,402</span>
 </div>
 """, unsafe_allow_html=True)
 
-# ⭐️ 탭 UI 생성 (개별 종목 분석 / 100종목 스캐너)
 tab1, tab2 = st.tabs(["📊 개별 종목 분석", "🎯 100종목 스캐너"])
 
 # ==========================================
-# TAB 1: 개별 종목 분석 (기존 기능)
+# TAB 1: 개별 종목 분석
 # ==========================================
 with tab1:
     st.markdown('<h2 class="text-white" style="margin-bottom: 15px; padding-left: 5px;">GANGJIN AI TRADER</h2>', unsafe_allow_html=True)
@@ -274,6 +267,56 @@ with tab1:
                     html_indices += f'<div class="index-card"><div class="index-name">{idx["name"]}</div><div class="index-price {idx_color}">{price_str}</div><div class="index-change {idx_color}">{sign}{idx["change"]:.1f}%</div></div>'
                 html_indices += '</div>'
                 st.markdown(html_indices, unsafe_allow_html=True)
+
+                # ⭐️ [NEW] 미래에셋 기준 수익 계산기
+                with st.expander("💰 수익 계산기 (미래에셋 기준)", expanded=False):
+                    col_calc1, col_calc2 = st.columns(2)
+                    with col_calc1:
+                        buy_price = st.number_input("내 매수 평단가 ($)", min_value=0.0, value=float(round(current_price, 2)), step=0.01)
+                    with col_calc2:
+                        quantity = st.number_input("보유 수량 (주)", min_value=0.0, value=10.0, step=1.0)
+
+                    if buy_price > 0 and quantity > 0:
+                        invest_usd = buy_price * quantity
+                        current_usd = current_price * quantity
+                        raw_profit_usd = current_usd - invest_usd
+                        profit_pct = (raw_profit_usd / invest_usd) * 100
+
+                        # 미래에셋 미국주식 수수료 (매수 0.25% + 매도 0.25% = 0.5% 가정)
+                        fee_usd = (invest_usd + current_usd) * 0.0025
+                        net_profit_usd = raw_profit_usd - fee_usd
+
+                        # 실시간 환율 가져오기 (USD/KRW)
+                        try:
+                            usd_krw = yf.Ticker("KRW=X").history(period="1d")['Close'].iloc[-1]
+                        except:
+                            usd_krw = 1350.0 # 오류 시 임시 환율
+                            
+                        net_profit_krw = net_profit_usd * usd_krw
+
+                        calc_color = "text-green" if net_profit_usd >= 0 else "text-red"
+                        
+                        st.markdown(f"""
+                        <div style="background-color: #1c1c24; padding: 15px; border-radius: 12px; border: 1px solid #2c2c35; margin-top: 10px;">
+                            <div style="color: #a1a1a6; font-size: 11px; margin-bottom: 5px;">
+                                * 미래에셋 수수료(0.5%) 및 환율({usd_krw:,.0f}원) 적용
+                            </div>
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <div>
+                                    <div class="text-gray">총 매수금액: ${invest_usd:,.2f}</div>
+                                    <div class="text-gray">현재 평가금액: ${current_usd:,.2f}</div>
+                                </div>
+                                <div style="text-align:right;">
+                                    <div class="{calc_color}" style="font-size: 20px; font-weight: bold;">
+                                        ${net_profit_usd:,.2f} ({profit_pct:.2f}%)
+                                    </div>
+                                    <div class="{calc_color}" style="font-size: 14px;">
+                                        한화 약 {net_profit_krw:,.0f} 원
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
 
                 st.markdown(f"""
                 <div class="detail-card">
@@ -401,43 +444,53 @@ with tab1:
 # TAB 2: 100종목 스캐너
 # ==========================================
 with tab2:
-    import os # 파일 저장을 위해 필요합니다
+    import os
+    import requests
     
+    TG_TOKEN = "8947878593:AAFX50ivbBUtwG3X5N3B9GY-F3nKdBENxT4" 
+    TG_CHAT_ID = "8948411618"
+
     st.markdown('<h3 class="text-white" style="margin-bottom: 5px;">🎯 4대 명인 종목 스캐너</h3>', unsafe_allow_html=True)
-    st.caption("최대 100개의 종목을 한 번에 스캔하여, 지금 당장 매수 타점(BUY)인 종목만 찾아냅니다.")
+    st.caption("100종목을 스캔하고, 결과를 텔레그램으로도 보내드립니다.")
     
-    # ⭐️ 종목 리스트를 저장할 파일 경로
     WATCHLIST_FILE = "my_watchlist.txt"
     
-    # ⭐️ 파일이 존재하면 불러오고, 없으면 기본 리스트 사용
     if os.path.exists(WATCHLIST_FILE):
         with open(WATCHLIST_FILE, "r", encoding="utf-8") as f:
             saved_tickers = f.read()
     else:
-        # 처음 쓸 때 세팅될 기본 100종목 (아까 정리해드린 리스트)
         saved_tickers = "IREN, CRWV, NBIS, SMR, CIFR, CLSK, HUT, MARA, RIOT, WULF, BTBT, CORZ, OKLO, NNE, SOUN, BBAI, AI, RGTI, QBTS, QUBT, IONQ, ASTS, RKLB, LUNR, ARM, SMCI, MRVL, ALAB, TEM, PLTR, APP, UPST, AFRM, COIN, MSTR, HOOD, CVNA, SYM, SERV, AUR, LAZR, AEHR, POET, NVTS, WVE, CRSP, BEAM, NTLA, RXRX, ACHR, AG, HL, PAAS, CDE, FSM, EXK, GATO, KGC, IAG, NG, AU, SBSW, EQT, AR, BTU, ARCH, AMR, TPL, OXY, CHK, RRC, CRK, CCJ, UEC, NXE, DNN, UUUU, MP, LAC, FCX, ZIM, STNG, FRO, NAT, TRMD, INSW, GSL, HSHP, SBLK, TNP, RCAT, AVAV, KTOS, HEI, HII, BWX, CAE, MRCY, KAMN, AIR"
 
-    # 텍스트 입력창
-    ticker_list_input = st.text_area("감시할 종목 코드 입력 (쉼표로 구분)", value=saved_tickers, height=150)
+    ticker_list_input = st.text_area("감시할 종목 코드 입력", value=saved_tickers, height=150)
     
-    # ⭐️ [저장] 버튼과 [스캔] 버튼을 나란히 배치
     col_btn1, col_btn2 = st.columns([1, 2])
     
     with col_btn1:
         if st.button("💾 리스트 저장", use_container_width=True):
             with open(WATCHLIST_FILE, "w", encoding="utf-8") as f:
                 f.write(ticker_list_input)
-            st.success("저장 완료! 앱을 껐다 켜도 유지됩니다.")
+            st.success("저장 완료!")
             
     with col_btn2:
-        scan_btn = st.button("🔍 타점 스캔 시작", type="primary", use_container_width=True)
+        scan_btn = st.button("🔍 타점 스캔 & 텔레그램 전송", type="primary", use_container_width=True)
         
     if scan_btn:
-        with st.spinner("100종목 로직 계산 중..."):
+        with st.spinner("100종목 로직 계산 및 텔레그램 전송 중..."):
             signals = scan_watchlist(ticker_list_input)
             
             if signals:
-                st.success(f"{len(signals)}개의 종목이 매수 타점입니다.")
+                st.success(f"{len(signals)}개의 종목이 매수 타점입니다. (텔레그램 전송 완료)")
+                
+                tg_msg = "🚨 <b>[4대 명인 타점 포착]</b> 🚨\n\n"
+                for sig in signals[:5]:
+                    tg_msg += f"• <b>{sig['ticker']}</b> ({sig['action']})\n  현재가: ${sig['price']:,.2f} | RSI: {sig['rsi']:.1f}\n"
+                tg_msg += "\n지금 앱에서 상세 차트를 확인하세요!"
+                
+                try:
+                    requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage", 
+                                  json={"chat_id": TG_CHAT_ID, "text": tg_msg, "parse_mode": "HTML"})
+                except: pass
+
                 for sig in signals:
                     st.markdown(f"""
                     <div style="background-color: #1c1c24; border: 1px solid rgba(0, 230, 118, 0.5); padding: 15px; border-radius: 12px; margin-bottom: 10px;">
