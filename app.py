@@ -401,23 +401,48 @@ with tab1:
 # TAB 2: 100종목 스캐너
 # ==========================================
 with tab2:
+    import os # 파일 저장을 위해 필요합니다
+    
     st.markdown('<h3 class="text-white" style="margin-bottom: 5px;">🎯 4대 명인 종목 스캐너</h3>', unsafe_allow_html=True)
     st.caption("최대 100개의 종목을 한 번에 스캔하여, 지금 당장 매수 타점(BUY)인 종목만 찾아냅니다.")
     
-    default_tickers = "AAPL, TSLA, NVDA, MSFT, AMZN, GOOGL, META, AMD, NFLX, AVAV, IREN, PLTR, COIN, MSTR, SOFI"
-    ticker_list_input = st.text_area("감시할 종목 코드 입력 (쉼표로 구분)", value=default_tickers, height=100)
+    # ⭐️ 종목 리스트를 저장할 파일 경로
+    WATCHLIST_FILE = "my_watchlist.txt"
     
-    if st.button("🔍 4대 명인 타점 스캔 시작", type="primary", use_container_width=True):
-        with st.spinner("야후 파이낸스에서 데이터를 불러와 4대 명인 로직을 계산 중입니다..."):
+    # ⭐️ 파일이 존재하면 불러오고, 없으면 기본 리스트 사용
+    if os.path.exists(WATCHLIST_FILE):
+        with open(WATCHLIST_FILE, "r", encoding="utf-8") as f:
+            saved_tickers = f.read()
+    else:
+        # 처음 쓸 때 세팅될 기본 100종목 (아까 정리해드린 리스트)
+        saved_tickers = "IREN, CRWV, NBIS, SMR, CIFR, CLSK, HUT, MARA, RIOT, WULF, BTBT, CORZ, OKLO, NNE, SOUN, BBAI, AI, RGTI, QBTS, QUBT, IONQ, ASTS, RKLB, LUNR, ARM, SMCI, MRVL, ALAB, TEM, PLTR, APP, UPST, AFRM, COIN, MSTR, HOOD, CVNA, SYM, SERV, AUR, LAZR, AEHR, POET, NVTS, WVE, CRSP, BEAM, NTLA, RXRX, ACHR, AG, HL, PAAS, CDE, FSM, EXK, GATO, KGC, IAG, NG, AU, SBSW, EQT, AR, BTU, ARCH, AMR, TPL, OXY, CHK, RRC, CRK, CCJ, UEC, NXE, DNN, UUUU, MP, LAC, FCX, ZIM, STNG, FRO, NAT, TRMD, INSW, GSL, HSHP, SBLK, TNP, RCAT, AVAV, KTOS, HEI, HII, BWX, CAE, MRCY, KAMN, AIR"
+
+    # 텍스트 입력창
+    ticker_list_input = st.text_area("감시할 종목 코드 입력 (쉼표로 구분)", value=saved_tickers, height=150)
+    
+    # ⭐️ [저장] 버튼과 [스캔] 버튼을 나란히 배치
+    col_btn1, col_btn2 = st.columns([1, 2])
+    
+    with col_btn1:
+        if st.button("💾 리스트 저장", use_container_width=True):
+            with open(WATCHLIST_FILE, "w", encoding="utf-8") as f:
+                f.write(ticker_list_input)
+            st.success("저장 완료! 앱을 껐다 켜도 유지됩니다.")
+            
+    with col_btn2:
+        scan_btn = st.button("🔍 타점 스캔 시작", type="primary", use_container_width=True)
+        
+    if scan_btn:
+        with st.spinner("100종목 로직 계산 중..."):
             signals = scan_watchlist(ticker_list_input)
             
             if signals:
-                st.success(f"총 {len(signals)}개의 종목이 매수 타점에 진입했습니다!")
+                st.success(f"{len(signals)}개의 종목이 매수 타점입니다.")
                 for sig in signals:
                     st.markdown(f"""
-                    <div style="background-color: #121620; border: 1px solid #2ea043; padding: 15px; border-radius: 12px; margin-bottom: 10px;">
+                    <div style="background-color: #1c1c24; border: 1px solid rgba(0, 230, 118, 0.5); padding: 15px; border-radius: 12px; margin-bottom: 10px;">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <h3 style="margin:0; color:white;">{sig['ticker']}</h3>
+                            <h3 style="margin:0; color:white; font-size:18px;">{sig['ticker']}</h3>
                             <span class="text-green" style="font-weight:bold;">{sig['action']}</span>
                         </div>
                         <div class="text-gray" style="margin-top: 5px;">
@@ -426,4 +451,4 @@ with tab2:
                     </div>
                     """, unsafe_allow_html=True)
             else:
-                st.info("현재 입력하신 종목 중 4대 명인의 매수 타점(BUY)에 들어온 종목이 없습니다.")
+                st.info("현재 매수 타점에 들어온 종목이 없습니다.")
