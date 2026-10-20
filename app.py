@@ -342,7 +342,7 @@ with tab1:
 
                 st.markdown(f"""
                 <div class="detail-card">
-                    <div class="text-white" style="margin-bottom: 8px;">🧠 4대 명인 종합 분석 (아이렌봇 로직)</div>
+                    <div class="text-white" style="margin-bottom: 8px;">🧠 4대 명인 종합 분석 (JINGANG 로직)</div>
                     <div class="text-gray" style="margin-bottom: 10px;">
                         • 20일 박스 상단: <b>${box_high:,.2f}</b> | 하단: <b>${box_low:,.2f}</b><br>
                         • EMA10: <b>${ema10:,.2f}</b> | EMA20: <b>${ema20:,.2f}</b><br>
@@ -355,7 +355,7 @@ with tab1:
                         • 사유: {reason}
                     </div>
                     <hr>
-                    <div class="text-white" style="margin-bottom: 8px;">🎯 매매 가이드 (아이렌봇 기준)</div>
+                    <div class="text-white" style="margin-bottom: 8px;">🎯 매매 가이드 (JINGANG봇 기준)</div>
                     <div class="text-gray">
                         • <b>지지선:</b> <span class="text-green">${box_low:,.2f}</span> (20일 박스 하단)<br>
                         • <b>손절선:</b> <span class="text-red">${stop_loss:,.2f}</span><br>
