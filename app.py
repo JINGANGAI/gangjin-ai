@@ -9,8 +9,7 @@ from streamlit_autorefresh import st_autorefresh
 import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
-import pytz
-from datetime import datetime
+import datetime
 import os
 
 # --- 1. 페이지 설정 ---
@@ -134,16 +133,18 @@ def scan_watchlist(ticker_string):
     signals.sort(key=lambda x: 0 if "PANIC" in x["action"] else (1 if "STRONG" in x["action"] else 2))
     return signals
 
-# --- 4. 상단 타이틀 및 뉴욕 시간(ET) ---
-ny_time = datetime.now(pytz.timezone('America/New_York')).strftime('%H:%M:%S')
-now = datetime.datetime.now()
-current_time = now.strftime('%H:%M:%S')
+# --- 4. 상단 타이틀 및 현재 시간 ---
+# 서버 시간(UTC)에 9시간을 더해 한국 시간(KST)으로 표시
+kst_now = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
+current_time = kst_now.strftime('%H:%M:%S')
 
 st.markdown(f"""
-<div style="display:flex; justify-content:space-between; color:#a1a1a6; font-size:13px; margin-bottom: 10px; padding-left: 5px;">
-    <span>📈 LIVE | {current_time} | BTC $81,402</span>
+<div style="display:flex; justify-content:space-between; color:#a1a1a6; font-size:13px; margin-bottom: 15px; padding-left:5px;">
+    <span>📈 LIVE | {current_time} KST</span>
+    <span>BTC $81,402</span>
 </div>
-""", unsafe_allow_html=True
+""", unsafe_allow_html=True)
+
 tab1, tab2 = st.tabs(["📊 개별 종목 분석", "🎯 100종목 스캐너"])
 
 # ==========================================
