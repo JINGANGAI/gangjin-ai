@@ -9,6 +9,8 @@ from streamlit_autorefresh import st_autorefresh
 import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
+import pytz
+from datetime import datetime
 
 st.set_page_config(page_title="GANGJIN AI TRADER", layout="centered", page_icon="📈", initial_sidebar_state="collapsed")
 
@@ -66,6 +68,23 @@ def get_market_indices():
         except:
             results.append({"name": name, "price": 0, "change": 0})
     return results
+
+# ⭐️ 상단바용 (BTC, 환율) 데이터 가져오기
+@st.cache_data(ttl=60)
+def get_top_bar_data():
+    try:
+        # BTC 현재가 및 전일 종가
+        btc_data = yf.Ticker("BTC-USD").history(period="2d")
+        btc_price = btc_data['Close'].iloc[-1]
+        btc_prev = btc_data['Close'].iloc[-2]
+        
+        # 달러/원 환율
+        usd_krw_data = yf.Ticker("KRW=X").history(period="1d")
+        usd_krw = usd_krw_data['Close'].iloc[-1]
+        
+        return btc_price, btc_price - btc_prev, usd_krw
+    except Exception:
+        return 81402, 0, 1350.0 # 에러 시 임시값
 
 @st.cache_data(ttl=300) 
 def get_google_news(ticker):
@@ -158,9 +177,22 @@ def scan_watchlist(ticker_string):
     signals.sort(key=lambda x: 0 if "PANIC" in x["action"] else (1 if "STRONG" in x["action"] else 2))
     return signals
 
+# ⭐️ 상단바 렌더링 (미국 동부 시간 + 실시간 환율 + BTC 색상)
+try:
+    et = pytz.timezone('US/Eastern')
+    now_et = datetime.now(et)
+    time_str = now_et.strftime('%H:%M:%S ET')
+except:
+    time_str = time.strftime('%H:%M:%S')
+
+btc_price, btc_change, usd_krw = get_top_bar_data()
+btc_color = "text-green" if btc_change >= 0 else "text-red"
+btc_arrow = "▲" if btc_change >= 0 else "▼"
+
 st.markdown(f"""
-<div style="display:flex; justify-content:space-between; color:#8b949e; font-size:13px; margin-bottom: 10px; padding-left: 5px;">
-    <span>📈 LIVE MARKET | {time.strftime('%H:%M:%S')} | BTC $81,402</span>
+<div style="display:flex; justify-content:space-between; align-items:center; color:#8b949e; font-size:13px; margin-bottom: 10px; padding-left: 5px;">
+    <span>📈 LIVE | {time_str}</span>
+    <span>BTC <span class="{btc_color}">{btc_arrow}${btc_price:,.0f}</span> | 환율 {usd_krw:,.0f}원</span>
 </div>
 """, unsafe_allow_html=True)
 
@@ -268,7 +300,6 @@ with tab1:
                 html_indices += '</div>'
                 st.markdown(html_indices, unsafe_allow_html=True)
 
-                # ⭐️ [NEW] 미래에셋 기준 수익 계산기
                 with st.expander("💰 수익 계산기 (미래에셋 기준)", expanded=False):
                     col_calc1, col_calc2 = st.columns(2)
                     with col_calc1:
@@ -281,17 +312,8 @@ with tab1:
                         current_usd = current_price * quantity
                         raw_profit_usd = current_usd - invest_usd
                         profit_pct = (raw_profit_usd / invest_usd) * 100
-
-                        # 미래에셋 미국주식 수수료 (매수 0.25% + 매도 0.25% = 0.5% 가정)
                         fee_usd = (invest_usd + current_usd) * 0.0025
                         net_profit_usd = raw_profit_usd - fee_usd
-
-                        # 실시간 환율 가져오기 (USD/KRW)
-                        try:
-                            usd_krw = yf.Ticker("KRW=X").history(period="1d")['Close'].iloc[-1]
-                        except:
-                            usd_krw = 1350.0 # 오류 시 임시 환율
-                            
                         net_profit_krw = net_profit_usd * usd_krw
 
                         calc_color = "text-green" if net_profit_usd >= 0 else "text-red"
