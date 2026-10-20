@@ -69,22 +69,19 @@ def get_market_indices():
             results.append({"name": name, "price": 0, "change": 0})
     return results
 
-# ⭐️ 상단바용 (BTC, 환율) 데이터 가져오기
 @st.cache_data(ttl=60)
 def get_top_bar_data():
     try:
-        # BTC 현재가 및 전일 종가
         btc_data = yf.Ticker("BTC-USD").history(period="2d")
         btc_price = btc_data['Close'].iloc[-1]
         btc_prev = btc_data['Close'].iloc[-2]
         
-        # 달러/원 환율
         usd_krw_data = yf.Ticker("KRW=X").history(period="1d")
         usd_krw = usd_krw_data['Close'].iloc[-1]
         
         return btc_price, btc_price - btc_prev, usd_krw
     except Exception:
-        return 81402, 0, 1350.0 # 에러 시 임시값
+        return 81402, 0, 1350.0
 
 @st.cache_data(ttl=300) 
 def get_google_news(ticker):
@@ -177,7 +174,6 @@ def scan_watchlist(ticker_string):
     signals.sort(key=lambda x: 0 if "PANIC" in x["action"] else (1 if "STRONG" in x["action"] else 2))
     return signals
 
-# ⭐️ 상단바 렌더링 (미국 동부 시간 + 실시간 환율 + BTC 색상)
 try:
     et = pytz.timezone('US/Eastern')
     now_et = datetime.now(et)
@@ -300,12 +296,18 @@ with tab1:
                 html_indices += '</div>'
                 st.markdown(html_indices, unsafe_allow_html=True)
 
+                # ⭐️ [수정된 부분] 수익 계산기 session_state 적용
                 with st.expander("💰 수익 계산기 (미래에셋 기준)", expanded=False):
+                    if "calc_buy_price" not in st.session_state:
+                        st.session_state.calc_buy_price = float(round(current_price, 2))
+                    if "calc_quantity" not in st.session_state:
+                        st.session_state.calc_quantity = 10.0
+
                     col_calc1, col_calc2 = st.columns(2)
                     with col_calc1:
-                        buy_price = st.number_input("내 매수 평단가 ($)", min_value=0.0, value=float(round(current_price, 2)), step=0.01)
+                        buy_price = st.number_input("내 매수 평단가 ($)", min_value=0.0, step=0.01, key="calc_buy_price")
                     with col_calc2:
-                        quantity = st.number_input("보유 수량 (주)", min_value=0.0, value=10.0, step=1.0)
+                        quantity = st.number_input("보유 수량 (주)", min_value=0.0, step=1.0, key="calc_quantity")
 
                     if buy_price > 0 and quantity > 0:
                         invest_usd = buy_price * quantity
@@ -342,7 +344,7 @@ with tab1:
 
                 st.markdown(f"""
                 <div class="detail-card">
-                    <div class="text-white" style="margin-bottom: 8px;">🧠 4대 명인 종합 분석 (JINGANG 로직)</div>
+                    <div class="text-white" style="margin-bottom: 8px;">🧠 4대 명인 종합 분석 (JINGANG봇 로직)</div>
                     <div class="text-gray" style="margin-bottom: 10px;">
                         • 20일 박스 상단: <b>${box_high:,.2f}</b> | 하단: <b>${box_low:,.2f}</b><br>
                         • EMA10: <b>${ema10:,.2f}</b> | EMA20: <b>${ema20:,.2f}</b><br>
@@ -355,7 +357,7 @@ with tab1:
                         • 사유: {reason}
                     </div>
                     <hr>
-                    <div class="text-white" style="margin-bottom: 8px;">🎯 매매 가이드 (JINGANG봇 기준)</div>
+                    <div class="text-white" style="margin-bottom: 8px;">🎯 매매 가이드 (JINGANG 기준)</div>
                     <div class="text-gray">
                         • <b>지지선:</b> <span class="text-green">${box_low:,.2f}</span> (20일 박스 하단)<br>
                         • <b>손절선:</b> <span class="text-red">${stop_loss:,.2f}</span><br>
