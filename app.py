@@ -136,8 +136,14 @@ def scan_watchlist(ticker_string):
 
 # --- 4. 상단 타이틀 및 뉴욕 시간(ET) ---
 ny_time = datetime.now(pytz.timezone('America/New_York')).strftime('%H:%M:%S')
-st.markdown(f'<div style="display:flex; justify-content:space-between; color:#a1a1a6; font-size:12px; margin-bottom: 15px; padding-left:5px;"><span>📈 LIVE | {ny_time} ET</span><span>BTC $81,402</span></div>', unsafe_allow_html=True)
+now = datetime.datetime.now()
+current_time = now.strftime('%H:%M:%S')
 
+st.markdown(f"""
+<div style="display:flex; justify-content:space-between; color:#a1a1a6; font-size:13px; margin-bottom: 10px; padding-left: 5px;">
+    <span>📈 LIVE | {current_time} | BTC $81,402</span>
+</div>
+""", unsafe_allow_html=True
 tab1, tab2 = st.tabs(["📊 개별 종목 분석", "🎯 100종목 스캐너"])
 
 # ==========================================
