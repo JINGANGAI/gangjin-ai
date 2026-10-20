@@ -10,19 +10,19 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-# --- 1. 페이지 설정 (넓은 화면 대신 모바일 앱 느낌을 위해 centered 유지) ---
+# --- 1. 페이지 설정 ---
 st.set_page_config(page_title="GANGJIN AI TRADER", layout="centered", page_icon="📈", initial_sidebar_state="collapsed")
 
-# --- 2. 프리미엄 다크 테마 CSS (주식친구 스타일) ---
+# --- 2. 완벽하게 다듬어진 프리미엄 CSS (가로 정렬 복구) ---
 st.markdown("""
 <meta name="google" content="notranslate">
 <style>
-    /* 배경색: 아주 깊은 무채색 다크 */
+    /* 배경색: 깊은 다크 그레이 */
     .stApp { background-color: #0d0d12 !important; }
     #MainMenu, footer, header {visibility: hidden;}
-    .block-container { padding-top: 1rem; padding-bottom: 3rem; max-width: 600px; } 
+    .block-container { padding-top: 1rem; padding-bottom: 2rem; max-width: 600px; } 
 
-    /* 입력창 & 드롭다운 디자인 */
+    /* 입력창 & 드롭다운 */
     div[data-baseweb="input"], div[data-baseweb="select"] > div { 
         background-color: #1c1c24 !important; 
         border: 1px solid #2c2c35 !important; 
@@ -31,55 +31,60 @@ st.markdown("""
     }
     div[data-baseweb="input"] input { color: white !important; font-weight: 600 !important; }
 
-    /* 스트림릿 네이티브 카드 테두리 (st.container border=True 사용 시) */
-    div[data-testid="stVerticalBlockBorderWrapper"] {
-        background-color: #1c1c24 !important;
-        border: 1px solid #2c2c35 !important;
-        border-radius: 20px !important;
-        padding: 5px !important;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-    }
-
-    /* 메인 가격 카드 (커스텀) */
+    /* 메인 가격 카드 */
     .main-price-card { 
-        background-color: #1c1c24; 
-        border: 1px solid #2c2c35;
-        padding: 20px; 
-        border-radius: 20px; 
-        margin-bottom: 15px; 
-        margin-top: 10px; 
+        background-color: #1c1c24 !important; 
+        border: 1px solid #2c2c35 !important;
+        padding: 20px !important; 
+        border-radius: 20px !important; 
+        margin-bottom: 15px !important; 
+        margin-top: 10px !important; 
     }
 
-    /* 텍스트 및 컬러 (민트 / 애플레드) */
-    .text-white { color: #ffffff; font-weight: 700; }
-    .text-gray { color: #a1a1a6; font-size: 13px; line-height: 1.6; }
-    .text-green { color: #00e676; font-weight: 700; } /* 민트 그린 */
-    .text-red { color: #ff453a; font-weight: 700; } /* 애플 레드 */
-    .text-yellow { color: #ffd60a; font-weight: 700; }
-    .price-large { font-size: 36px; font-weight: 800; color: white; margin: 5px 0; letter-spacing: -1px;}
+    /* ⭐️ [핵심 복구] 지수 카드 가로 5칸 배치 (절대 안 깨짐) */
+    .index-wrapper { display: flex !important; justify-content: space-between !important; gap: 6px !important; margin-bottom: 20px !important; }
+    .index-card { 
+        flex: 1 !important; 
+        background-color: #1c1c24 !important; 
+        border: 1px solid #2c2c35 !important;
+        padding: 10px 2px !important; 
+        border-radius: 12px !important; 
+        text-align: center !important; 
+        min-width: 0 !important; 
+    }
+    .index-name { color: #a1a1a6 !important; font-size: 10px !important; font-weight: 600 !important; margin-bottom: 4px !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important;}
+    .index-price { font-size: 12px !important; font-weight: 700 !important; margin-bottom: 2px !important;}
+    .index-change { font-size: 9px !important; font-weight: 600 !important;}
+
+    /* 상세 정보 카드 */
+    .detail-card { 
+        background-color: #1c1c24 !important; 
+        border: 1px solid #2c2c35 !important; 
+        padding: 20px !important; 
+        border-radius: 20px !important; 
+    }
     
-    /* 뱃지 디자인 (알약 모양) */
-    .badge-green { 
-        background-color: rgba(0, 230, 118, 0.1); color: #00e676; 
-        border: 1px solid rgba(0, 230, 118, 0.3);
-        padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; 
-        white-space: nowrap; display: inline-block; 
-    }
-    .badge-red { 
-        background-color: rgba(255, 69, 58, 0.1); color: #ff453a; 
-        border: 1px solid rgba(255, 69, 58, 0.3);
-        padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; 
-        white-space: nowrap; display: inline-block; 
-    }
-    hr { border: 0.5px solid #2c2c35; margin: 15px 0; }
+    /* 텍스트 및 컬러 */
+    .text-white { color: #ffffff !important; font-weight: 700 !important; }
+    .text-gray { color: #a1a1a6 !important; font-size: 13px !important; line-height: 1.7 !important; }
+    .text-green { color: #00e676 !important; font-weight: 700 !important; }
+    .text-red { color: #ff453a !important; font-weight: 700 !important; }
+    .text-yellow { color: #ffd60a !important; font-weight: 700 !important; }
+    .price-large { font-size: 32px !important; font-weight: 800 !important; color: #ffffff !important; margin: 5px 0 !important; letter-spacing: -0.5px !important;}
+    
+    /* 뱃지 */
+    .badge-green { background-color: rgba(0, 230, 118, 0.1) !important; color: #00e676 !important; border: 1px solid rgba(0, 230, 118, 0.3) !important; padding: 6px 12px !important; border-radius: 20px !important; font-size: 12px !important; font-weight: 700 !important; white-space: nowrap !important; display: inline-block !important; }
+    .badge-red { background-color: rgba(255, 69, 58, 0.1) !important; color: #ff453a !important; border: 1px solid rgba(255, 69, 58, 0.3) !important; padding: 6px 12px !important; border-radius: 20px !important; font-size: 12px !important; font-weight: 700 !important; white-space: nowrap !important; display: inline-block !important; }
+    
+    hr { border: 0.5px solid #2c2c35 !important; margin: 15px 0 !important; }
     
     /* 탭 디자인 */
-    button[data-baseweb="tab"] { color: #a1a1a6 !important; font-weight: 600; }
+    button[data-baseweb="tab"] { color: #a1a1a6 !important; font-weight: 600 !important; }
     button[aria-selected="true"] { color: #00e676 !important; border-bottom-color: #00e676 !important; }
     
     /* 뉴스 링크 */
-    a.news-link { color: #0a84ff !important; text-decoration: none; font-size: 13px; font-weight: 600; }
-    a.news-link:hover { text-decoration: underline; }
+    a.news-link { color: #0a84ff !important; text-decoration: none !important; font-size: 13px !important; font-weight: 600 !important; }
+    a.news-link:hover { text-decoration: underline !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -244,46 +249,42 @@ with tab1:
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # 2. 글로벌 지수 (가로 스크롤/배치)
+                # 2. 글로벌 지수 (가로 5칸 배치 완벽 복구)
                 indices_data = get_market_indices()
-                cols = st.columns(5)
-                for i, idx in enumerate(indices_data):
-                    with cols[i]:
-                        idx_color = "text-green" if idx['change'] >= 0 else "text-red"
-                        sign = "+" if idx['change'] >= 0 else ""
-                        price_str = f"{idx['price']:.2f}%" if idx['name'] == "10년물 금리" else (f"{idx['price']:,.0f}" if idx['price'] > 1000 else f"{idx['price']:,.2f}")
-                        st.markdown(f"""
-                        <div style="background-color: #1c1c24; border: 1px solid #2c2c35; padding: 10px 2px; border-radius: 12px; text-align: center;">
-                            <div style="color: #a1a1a6; font-size: 10px; margin-bottom: 3px;">{idx['name']}</div>
-                            <div class="{idx_color}" style="font-size: 12px; font-weight: bold;">{price_str}</div>
-                            <div class="{idx_color}" style="font-size: 10px;">{sign}{idx['change']:.1f}%</div>
-                        </div>
-                        """, unsafe_allow_html=True)
+                html_indices = '<div class="index-wrapper">'
+                for idx in indices_data:
+                    idx_color = "text-green" if idx['change'] >= 0 else "text-red"
+                    sign = "+" if idx['change'] >= 0 else ""
+                    price_str = f"{idx['price']:.2f}%" if idx['name'] == "10년물 금리" else (f"{idx['price']:,.0f}" if idx['price'] > 1000 else f"{idx['price']:,.2f}")
+                    html_indices += f'<div class="index-card"><div class="index-name">{idx["name"]}</div><div class="index-price {idx_color}">{price_str}</div><div class="index-change {idx_color}">{sign}{idx["change"]:.1f}%</div></div>'
+                html_indices += '</div>'
+                st.markdown(html_indices, unsafe_allow_html=True)
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
-                # 3. 4대 명인 분석 카드 (Streamlit Native Container 사용)
-                with st.container(border=True):
-                    st.markdown(f'<div class="text-white" style="font-size: 16px; margin-bottom: 10px;">🧠 4대 명인 분석 (아이렌봇)</div>', unsafe_allow_html=True)
-                    st.markdown(f"""
-                        <div class="text-gray">
-                        • 20일 박스: <b>${box_low:,.2f} ~ ${box_high:,.2f}</b><br>
-                        • EMA10: <b>${ema10:,.2f}</b> | EMA20: <b>${ema20:,.2f}</b><br>
-                        • 거래량 비율: <b>{vol_ratio:.1f}x</b>
-                        </div>
-                        <hr>
-                        <div class="text-white" style="font-size: 16px; margin-bottom: 10px;">🤖 AI 액션</div>
-                        <div class="text-gray" style="margin-bottom: 15px;">
-                            • 판단: <span class="{css_class}" style="font-size: 18px;">{action}</span><br>
-                            • 사유: {reason}
-                        </div>
-                        <hr>
-                        <div class="text-white" style="font-size: 16px; margin-bottom: 10px;">🎯 매매 가이드</div>
-                        <div class="text-gray">
-                            • 지지선: <span class="text-green">${box_low:,.2f}</span> | • 손절선: <span class="text-red">${stop_loss:,.2f}</span><br>
-                            • 1차 익절: <span class="text-green">${target_1:,.2f}</span> | • 2차 익절: <span class="text-green">${target_2:,.2f}</span>
-                        </div>
-                    """, unsafe_allow_html=True)
+                # 3. 4대 명인 분석 카드
+                st.markdown(f"""
+                <div class="detail-card">
+                    <div class="text-white" style="font-size: 16px; margin-bottom: 10px;">🧠 4대 명인 분석 (아이렌봇)</div>
+                    <div class="text-gray">
+                    • 20일 박스: <b>${box_low:,.2f} ~ ${box_high:,.2f}</b><br>
+                    • EMA10: <b>${ema10:,.2f}</b> | EMA20: <b>${ema20:,.2f}</b><br>
+                    • 거래량 비율: <b>{vol_ratio:.1f}x</b>
+                    </div>
+                    <hr>
+                    <div class="text-white" style="font-size: 16px; margin-bottom: 10px;">🤖 AI 액션</div>
+                    <div class="text-gray" style="margin-bottom: 15px;">
+                        • 판단: <span class="{css_class}" style="font-size: 18px;">{action}</span><br>
+                        • 사유: {reason}
+                    </div>
+                    <hr>
+                    <div class="text-white" style="font-size: 16px; margin-bottom: 10px;">🎯 매매 가이드</div>
+                    <div class="text-gray">
+                        • 지지선: <span class="text-green">${box_low:,.2f}</span> | • 손절선: <span class="text-red">${stop_loss:,.2f}</span><br>
+                        • 1차 익절: <span class="text-green">${target_1:,.2f}</span> | • 2차 익절: <span class="text-green">${target_2:,.2f}</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
