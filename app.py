@@ -338,7 +338,22 @@ def get_market_indices():
     out = []
     for name, t in tickers.items():
         try:
-            d = yf.Ticker(t).history(period="5d")
+            tk = yf.Ticker(t)
+            # [핵심 수정] fast_info를 사용해 선물 롤오버 및 꼬인 과거 데이터 버그 우회
+            try:
+                fi = tk.fast_info
+                cur = getattr(fi, 'last_price', None)
+                prev = getattr(fi, 'previous_close', None)
+                if cur and prev and float(cur) > 0 and float(prev) > 0:
+                    cur, prev = float(cur), float(prev)
+                    chg = ((cur - prev) / prev) * 100.0
+                    out.append({"name": name, "price": cur, "change": chg})
+                    continue
+            except Exception:
+                pass
+            
+            # fast_info 실패 시 history() 폴백 (잔여 오류 방어)
+            d = tk.history(period="5d")
             if len(d) >= 2:
                 cur = safe_float(d['Close'].iloc[-1], 0.0)
                 prev = safe_float(d['Close'].iloc[-2], 0.0)
@@ -346,10 +361,10 @@ def get_market_indices():
                 out.append({"name": name, "price": cur, "change": chg})
             else:
                 out.append({"name": name, "price": 0.0, "change": 0.0})
-        except Exception:
+        except Exception as e:
+            LOG.warning(f"get_market_indices error {name}: {e}")
             out.append({"name": name, "price": 0.0, "change": 0.0})
     return out
-
 
 @st.cache_data(ttl=CFG["cache"]["history"])
 def get_history(ticker: str, period: str = "1y") -> pd.DataFrame:
