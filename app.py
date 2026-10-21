@@ -1864,43 +1864,74 @@ def render_tab_analysis(indices, usd_krw):
                                          "✅ 원칙준수 (냉정)", f"평단 ${buy_price:,.2f} → ${current_price:,.2f} ({roi_pct:+.1f}%)")
                     st.success(f"{ticker} 매매일지 기록 완료!")
 
+     # ─── 4-IN-1 차트 ───
     col_c1, col_c2, col_c3 = st.columns([1, 1, 1.5])
     with col_c1: show_vwap_y = st.checkbox("1년 VWAP", value=True)
-    with col_c2: show_vwap_w = st.checkbox("5일 VWAP", value=False)
+    with col_c2: show_vwap_w = st.checkbox("1주 VWAP", value=False)
     with col_c3: show_gamma = st.checkbox("감마벽 라인", value=True)
+
     fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.03,
                         row_heights=[0.55, 0.15, 0.15, 0.15],
                         subplot_titles=(f"{ticker} 가격 & 추세", "거래량", "MACD", "Wilder RSI(14)"))
-    fig.add_trace(go.Candlestick(x=hist.index, open=hist['Open'], high=hist['High'], low=hist['Low'], close=hist['Close'],
+    
+    # 1. 캔들 (주가)
+    fig.add_trace(go.Candlestick(x=hist.index, open=hist['Open'], high=hist['High'], 
+                                 low=hist['Low'], close=hist['Close'],
+                                 name="주가 봉", 
                                  increasing_line_color='#10b981', decreasing_line_color='#f43f5e',
                                  increasing_fillcolor='#10b981', decreasing_fillcolor='#f43f5e'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=hist.index, y=hist['EMA10'], line=dict(color='#38bdf8', width=1.5)), row=1, col=1)
-    fig.add_trace(go.Scatter(x=hist.index, y=hist['EMA20'], line=dict(color='#fbbf24', width=1.5)), row=1, col=1)
-    fig.add_trace(go.Scatter(x=hist.index, y=hist['EMA50'], line=dict(color='#a855f7', width=1.2, dash='dot')), row=1, col=1)
-    fig.add_trace(go.Scatter(x=hist.index, y=hist['Box_High'], line=dict(color='#ef4444', width=1, dash='dash')), row=1, col=1)
-    fig.add_trace(go.Scatter(x=hist.index, y=hist['Box_Low'], line=dict(color='#10b981', width=1, dash='dash')), row=1, col=1)
+    
+    # 2. 이동평균선들
+    fig.add_trace(go.Scatter(x=hist.index, y=hist['EMA10'], name="EMA10 (단기)", line=dict(color='#38bdf8', width=1.5)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=hist.index, y=hist['EMA20'], name="EMA20 (생명선)", line=dict(color='#fbbf24', width=1.5)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=hist.index, y=hist['EMA50'], name="EMA50 (중기)", line=dict(color='#a855f7', width=1.2, dash='dot')), row=1, col=1)
+    
+    # 3. 박스권
+    fig.add_trace(go.Scatter(x=hist.index, y=hist['Box_High'], name="20일 고점(저항)", line=dict(color='#ef4444', width=1, dash='dash')), row=1, col=1)
+    fig.add_trace(go.Scatter(x=hist.index, y=hist['Box_Low'], name="20일 저점(지지)", line=dict(color='#10b981', width=1, dash='dash')), row=1, col=1)
+
+    # 4. VWAP
     if show_vwap_y:
-        fig.add_trace(go.Scatter(x=hist.index, y=hist['VWAP_Year'], line=dict(color='#f97316', width=1.2)), row=1, col=1)
+        fig.add_trace(go.Scatter(x=hist.index, y=hist['VWAP_Year'], name="1년 VWAP", line=dict(color='#f97316', width=1.2)), row=1, col=1)
     if show_vwap_w:
-        fig.add_trace(go.Scatter(x=hist.index, y=hist['VWAP_Week'], line=dict(color='#ec4899', width=1.2)), row=1, col=1)
+        fig.add_trace(go.Scatter(x=hist.index, y=hist['VWAP_Week'], name="1주 VWAP", line=dict(color='#ec4899', width=1.2)), row=1, col=1)
+
+    # 5. 감마벽 라인
     if show_gamma and call_wall:
         fig.add_hline(y=call_wall, line=dict(color="#f43f5e", width=1.5, dash="dash"), row=1, col=1)
     if show_gamma and put_wall:
         fig.add_hline(y=put_wall, line=dict(color="#10b981", width=1.5, dash="dash"), row=1, col=1)
+
+    # 6. 거래량
     vcolors = ['#10b981' if c >= o else '#f43f5e' for c, o in zip(hist['Close'], hist['Open'])]
-    fig.add_trace(go.Bar(x=hist.index, y=hist['Volume'], marker_color=vcolors, opacity=0.8), row=2, col=1)
-    fig.add_trace(go.Scatter(x=hist.index, y=hist['Vol_MA20'], line=dict(color='#94a3b8', width=1)), row=2, col=1)
+    fig.add_trace(go.Bar(x=hist.index, y=hist['Volume'], name="거래량", marker_color=vcolors, opacity=0.8), row=2, col=1)
+    fig.add_trace(go.Scatter(x=hist.index, y=hist['Vol_MA20'], name="거래량 20MA", line=dict(color='#94a3b8', width=1)), row=2, col=1)
+
+    # 7. MACD
     mcolors = ['#10b981' if v >= 0 else '#f43f5e' for v in hist['MACD_Hist']]
-    fig.add_trace(go.Bar(x=hist.index, y=hist['MACD_Hist'], marker_color=mcolors), row=3, col=1)
-    fig.add_trace(go.Scatter(x=hist.index, y=hist['MACD'], line=dict(color='#38bdf8', width=1.2)), row=3, col=1)
-    fig.add_trace(go.Scatter(x=hist.index, y=hist['MACD_Signal'], line=dict(color='#fbbf24', width=1.2)), row=3, col=1)
-    fig.add_trace(go.Scatter(x=hist.index, y=hist['RSI'], line=dict(color='#a855f7', width=1.5)), row=4, col=1)
+    fig.add_trace(go.Bar(x=hist.index, y=hist['MACD_Hist'], name="MACD Hist", marker_color=mcolors), row=3, col=1)
+    fig.add_trace(go.Scatter(x=hist.index, y=hist['MACD'], name="MACD 선", line=dict(color='#38bdf8', width=1.2)), row=3, col=1)
+    fig.add_trace(go.Scatter(x=hist.index, y=hist['MACD_Signal'], name="MACD 시그널", line=dict(color='#fbbf24', width=1.2)), row=3, col=1)
+
+    # 8. RSI
+    fig.add_trace(go.Scatter(x=hist.index, y=hist['RSI'], name="Wilder RSI", line=dict(color='#a855f7', width=1.5)), row=4, col=1)
     fig.add_hline(y=70, line=dict(color="rgba(244,63,94,0.7)", width=1, dash="dot"), row=4, col=1)
     fig.add_hline(y=30, line=dict(color="rgba(16,185,129,0.7)", width=1, dash="dot"), row=4, col=1)
     fig.add_hline(y=25, line=dict(color="#10b981", width=1.5, dash="dash"), row=4, col=1)
-    fig.update_layout(template="plotly_dark", height=660, margin=dict(l=30, r=30, t=30, b=20),
-                      xaxis_rangeslider_visible=False, showlegend=False,
-                      paper_bgcolor="#080c14", plot_bgcolor="#080c14", hovermode="x unified")
+
+    # [핵심 수정] showlegend=True로 설정하여 차트 위에 이름표(범례) 표시
+    fig.update_layout(
+        template="plotly_dark", 
+        height=680,
+        margin=dict(l=30, r=30, t=50, b=20),
+        xaxis_rangeslider_visible=False, 
+        showlegend=True, 
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=10)),
+        paper_bgcolor="#080c14", plot_bgcolor="#080c14", 
+        hovermode="x unified",
+        hoverlabel=dict(bgcolor="#0f172a", font_size=11, font_family="JetBrains Mono")
+    )
+    
     fig.update_xaxes(gridcolor="#1e293b", showgrid=True)
     fig.update_yaxes(gridcolor="#1e293b", showgrid=True)
     st.plotly_chart(fig, use_container_width=True)
