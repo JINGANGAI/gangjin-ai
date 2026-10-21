@@ -1,10 +1,11 @@
 # ==============================================================================
-# GANGJIN AI TRADER PRO — App (15) — Final Masterpiece
-# - 지수/선물 데이터 fast_info 적용 (데이터 꼬임 방지)
-# - 악재 뉴스 키워드 대폭 보강 (취소, 중단, 철회, 소송 등) 및 검색 쿼리 강화
-# - 차트 범례(Legend) 표시 및 VWAP 계산 정상화
-# - 수익 계산기 동적 라벨(익절/축소) 및 컬러 정상화
-# - 매매일지 및 봇 신호 자동 검증 시스템 완비
+# GANGJIN AI TRADER PRO — App (16.2 FINAL)
+# - xFinance 연동: 야후 파이낸스 장애 시 자동 Failover (데이터 무중단)
+# - Finnhub API 연동: 전문 뉴스 수집 및 악재 정밀 판독 (키 없을 시 구글 뉴스 폴백)
+# - ⭐ 지난 악재 recency 가중치 + 중복 기사 dedup + 가격 회복 자동 보정
+# - ⭐ [16.2] Patch A: 악재 최신성(bad_newest_hours) 반환
+# - ⭐ [16.2] Patch B: Finnhub 필터 후 0건이면 RSS 자동 폴백
+# - ⭐ [16.2] Patch C: 회복 판정을 악재 나이 기반으로 + 캐시 변이 방지
 # ==============================================================================
 import streamlit as st
 import yfinance as yf
@@ -17,13 +18,30 @@ import logging
 import urllib.request
 import urllib.parse
 import time
+import re
 import xml.etree.ElementTree as ET
+from email.utils import parsedate_to_datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import requests
+
+# ⭐️ 데이터 이중화를 위한 라이브러리 Import
+try:
+    import xfinance as xf
+    HAS_XFINANCE = True
+except ImportError:
+    HAS_XFINANCE = False
+    xf = None
+
+try:
+    import finnhub
+    HAS_FINNHUB_LIB = True
+except ImportError:
+    HAS_FINNHUB_LIB = False
+    finnhub = None
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -86,6 +104,14 @@ CFG = {
                         "job cut", "layoff", "production cut", "price target cut"),
         "geo": ("war", "tariff", "sanction", "inflation", "fed", "rate", "missile",
                 "iran", "china", "ban", "export control"),
+        "recency_hours": {
+            "fresh": 24.0, "recent": 48.0, "this_week": 72.0,
+            "five_days": 120.0, "seven_days": 168.0,
+        },
+        "bad_recent_threshold": 0.7,
+        "recovery_pct_forgive": 3.0,
+        "recovery_bonus": 6,
+        "recovery_min_age_hours": 24.0,   # ⭐ Patch C: 회복 보정 최소 악재 나이
     },
     "noise": {
         "minor_atr_mult": 1.35, "band_atr_mult": 1.8, "chandelier_atr": 2.8,
@@ -103,6 +129,8 @@ CFG = {
 
 Path(CFG["paths"]["logs"]).mkdir(parents=True, exist_ok=True)
 Path(CFG["paths"]["db"]).parent.mkdir(parents=True, exist_ok=True)
+
+FINNHUB_KEY = os.getenv("FINNHUB_API_KEY", "").strip()
 
 
 # ==============================================================================
@@ -125,7 +153,6 @@ def _setup_logger() -> logging.Logger:
     except Exception:
         pass
     return logger
-
 
 LOG = _setup_logger()
 
@@ -161,6 +188,47 @@ def compute_wilder_rsi(close: pd.Series, period: int = 14) -> pd.Series:
     l = (-d.where(d < 0, 0.0)).ewm(alpha=1.0 / period, adjust=False).mean()
     rs = g / l.replace(0, np.nan)
     return (100.0 - 100.0 / (1.0 + rs)).fillna(50.0)
+
+
+def _recency_weight(pub_dt) -> float:
+    """뉴스 발행시각 → 0~1 가중치. 7일 이상은 0.0 (완전 무시)."""
+    if pub_dt is None:
+        return 0.4
+    try:
+        if pub_dt.tzinfo is not None:
+            now = datetime.now(pub_dt.tzinfo)
+        else:
+            now = datetime.now()
+        hours = max(0.0, (now - pub_dt).total_seconds() / 3600.0)
+    except Exception:
+        return 0.4
+    rcfg = CFG["news"]["recency_hours"]
+    if hours <= rcfg["fresh"]:       return 1.0
+    if hours <= rcfg["recent"]:      return 0.7
+    if hours <= rcfg["this_week"]:   return 0.45
+    if hours <= rcfg["five_days"]:   return 0.25
+    if hours <= rcfg["seven_days"]:  return 0.10
+    return 0.0
+
+
+def _hours_since(pub_dt) -> float:
+    """뉴스 발행시각으로부터 경과 시간(시간). 파싱 실패 시 큰 값."""
+    if pub_dt is None:
+        return 9999.0
+    try:
+        if pub_dt.tzinfo is not None:
+            now = datetime.now(pub_dt.tzinfo)
+        else:
+            now = datetime.now()
+        return max(0.0, (now - pub_dt).total_seconds() / 3600.0)
+    except Exception:
+        return 9999.0
+
+
+def _normalize_title(t: str) -> str:
+    """중복 기사 판별용 정규화 — 소문자, 특수문자 제거, 앞 8단어."""
+    t = re.sub(r'[^a-z0-9가-힣 ]', ' ', (t or '').lower())
+    return " ".join(t.split()[:8])
 
 
 SIGNAL_HOLD_LONG   = "🟢 장기 홀딩"
@@ -369,27 +437,32 @@ def get_history(ticker: str, period: str = "1y") -> pd.DataFrame:
     for attempt in range(2):
         try:
             h = yf.Ticker(ticker).history(period=period)
-            if h is None or h.empty:
-                if attempt == 0:
-                    time.sleep(0.4)
-                    continue
-                return pd.DataFrame()
-            if 'Close' not in h.columns or h['Close'].notna().sum() < 5:
-                if attempt == 0:
-                    time.sleep(0.4)
-                    continue
-                return pd.DataFrame()
-            if h.index.tz is not None:
-                try:
-                    h.index = h.index.tz_localize(None)
-                except Exception:
-                    h.index = h.index.tz_convert(None)
-            return h
+            if h is not None and not h.empty and 'Close' in h.columns and h['Close'].notna().sum() >= 5:
+                if h.index.tz is not None:
+                    try:
+                        h.index = h.index.tz_localize(None)
+                    except Exception:
+                        h.index = h.index.tz_convert(None)
+                return h
         except Exception as e:
             last_err = e
-            LOG.warning("get_history attempt %d failed for %s: %s", attempt + 1, ticker, e)
             if attempt == 0:
                 time.sleep(0.4)
+
+    if HAS_XFINANCE:
+        try:
+            LOG.info(f"yfinance failed for {ticker}, falling back to xfinance")
+            xh = xf.Ticker(ticker).history(period=period)
+            if xh is not None and not xh.empty:
+                if xh.index.tz is not None:
+                    try:
+                        xh.index = xh.index.tz_localize(None)
+                    except Exception:
+                        xh.index = xh.index.tz_convert(None)
+                return xh
+        except Exception as e:
+            LOG.error(f"xfinance fallback failed for {ticker}: {e}")
+
     LOG.error("get_history final failure for %s: %s", ticker, last_err)
     return pd.DataFrame()
 
@@ -836,7 +909,7 @@ def normalize_indices_key(indices):
 
 
 # ==============================================================================
-# 10) MACRO + NEWS (강화된 악재 키워드 및 쿼리 적용)
+# 10) MACRO + NEWS (⭐ Patch A 반영: bad_newest_hours 반환 / Patch B: RSS 폴백)
 # ==============================================================================
 @st.cache_data(ttl=CFG["cache"]["macro"])
 def analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=False):
@@ -893,45 +966,122 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=False):
     except Exception:
         pass
 
-    # ⭐️ [보완] 악재 및 계약 취소 관련 뉴스를 더 잘 긁어오기 위한 쿼리 확장
-    query = urllib.parse.quote(f"{ticker} stock news OR lawsuit OR contract cancellation OR failure OR loss")
-    url = f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
+    # ⭐ 뉴스 집계
     news_items = []
     ncfg = CFG["news"]
-    ch_ = 0
-    ebh = 0
-    bh = 0
-    gh = 0
-    try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=5) as response:
-            root = ET.fromstring(response.read())
-        for item in root.findall('.//item')[:6]:
-            raw_title = (item.find('title').text if item.find('title') is not None else "") or ""
-            raw_link = (item.find('link').text if item.find('link') is not None else "#") or "#"
-            raw_pub = (item.find('pubDate').text[:16] if (item.find('pubDate') is not None and item.find('pubDate').text) else "")
-            tl = raw_title.lower()
-            c_hit = any(k in tl for k in ncfg["contract"])
-            eb_hit = any(k in tl for k in ncfg["earnings_bull"]) or any(k in tl for k in ncfg["cut_bullish"])
-            bad_hit = any(k in tl for k in ncfg["bad_strict"]) or any(k in tl for k in ncfg["cut_bearish"])
-            g_hit = any(k in tl for k in ncfg["geo"])
-            if c_hit: ch_ += 1
-            if eb_hit: ebh += 1
-            if bad_hit: bh += 1
-            if g_hit: gh += 1
-            if bad_hit: sentiment, badge_class = "🚨 악재/주의", "badge-red"
-            elif c_hit: sentiment, badge_class = "🤝 계약/수주", "badge-green"
-            elif eb_hit: sentiment, badge_class = "📈 실적 호조", "badge-green"
-            elif g_hit: sentiment, badge_class = "🌍 거시 이슈", "badge-yellow"
-            else: sentiment, badge_class = "📰 일반/중립", "badge-blue"
-            news_items.append({"title": html.escape(raw_title), "link": safe_url(raw_link),
-                               "date": html.escape(raw_pub), "sentiment": sentiment, "badge_class": badge_class})
-    except Exception as e:
-        LOG.warning("RSS fetch failed for %s: %s", ticker, e)
+    bad_recent_threshold = ncfg["bad_recent_threshold"]
 
-    catalyst_score = (ch_ * 8) + (ebh * 6) - (bh * 12) - (gh * 4)
+    ch_score = ebh_score = bh_score = gh_score = 0.0
+    ch_cnt = ebh_cnt = bh_cnt = gh_cnt = 0
+    bad_recent_cnt = 0
+    bad_newest_hours = 9999.0    # ⭐ Patch A: 가장 최근 악재의 경과시간
+    seen_titles = set()
+
+    def _classify_and_accumulate(raw_title, raw_link, raw_pub_str, pub_dt, date_display):
+        nonlocal ch_score, ebh_score, bh_score, gh_score
+        nonlocal ch_cnt, ebh_cnt, bh_cnt, gh_cnt, bad_recent_cnt, bad_newest_hours
+        key = _normalize_title(raw_title)
+        if key in seen_titles:
+            return
+        seen_titles.add(key)
+
+        w = _recency_weight(pub_dt)
+        if w <= 0.0:
+            return  # 7일 이상 완전 무시
+
+        tl = raw_title.lower()
+        c_hit  = any(k in tl for k in ncfg["contract"])
+        eb_hit = any(k in tl for k in ncfg["earnings_bull"]) or any(k in tl for k in ncfg["cut_bullish"])
+        bad_hit= any(k in tl for k in ncfg["bad_strict"])    or any(k in tl for k in ncfg["cut_bearish"])
+        g_hit  = any(k in tl for k in ncfg["geo"])
+
+        if c_hit:
+            ch_score += 8 * w
+            ch_cnt += 1
+        if eb_hit:
+            ebh_score += 6 * w
+            ebh_cnt += 1
+        if bad_hit:
+            bh_score += 12 * w
+            bh_cnt += 1
+            if w >= bad_recent_threshold:
+                bad_recent_cnt += 1
+            # ⭐ Patch A: 가장 최근 악재의 경과시간 추적
+            _h = _hours_since(pub_dt)
+            if _h < bad_newest_hours:
+                bad_newest_hours = _h
+        if g_hit:
+            gh_score += 4 * w
+            gh_cnt += 1
+
+        if bad_hit: sentiment, badge_class = "🚨 악재/주의", "badge-red"
+        elif c_hit: sentiment, badge_class = "🤝 계약/수주", "badge-green"
+        elif eb_hit: sentiment, badge_class = "📈 실적 호조", "badge-green"
+        elif g_hit: sentiment, badge_class = "🌍 거시 이슈", "badge-yellow"
+        else: sentiment, badge_class = "📰 일반/중립", "badge-blue"
+
+        age_note = ""
+        if 0 < w < 1.0:
+            age_note = f" · 가중치 {w:.2f}"
+
+        news_items.append({
+            "title": html.escape(raw_title),
+            "link": safe_url(raw_link),
+            "date": html.escape(date_display + age_note),
+            "sentiment": sentiment,
+            "badge_class": badge_class,
+        })
+
+    # ⭐ 1차: Finnhub
+    finnhub_success = False
+    if FINNHUB_KEY and HAS_FINNHUB_LIB:
+        try:
+            client = finnhub.Client(api_key=FINNHUB_KEY)
+            today = datetime.now()
+            from_date = (today - timedelta(days=7)).strftime('%Y-%m-%d')
+            to_date = today.strftime('%Y-%m-%d')
+            fh_news = client.company_news(ticker, _from=from_date, to=to_date)
+            if fh_news:
+                finnhub_success = True
+                for item in fh_news[:20]:
+                    raw_title = item.get('headline', '') or ''
+                    raw_link = item.get('url', '#') or '#'
+                    ts = item.get('datetime', 0) or 0
+                    try:
+                        pub_dt = datetime.fromtimestamp(ts)
+                        pub_str = pub_dt.strftime('%b %d')
+                    except Exception:
+                        pub_dt = None
+                        pub_str = ""
+                    _classify_and_accumulate(raw_title, raw_link, pub_str, pub_dt, pub_str)
+        except Exception as e:
+            LOG.warning(f"Finnhub news fetch failed for {ticker}: {e}")
+
+    # ⭐ 2차 폴백 (Patch B: 필터 후 0건이면 RSS 자동 폴백)
+    if (not finnhub_success) or (len(news_items) == 0):
+        query = urllib.parse.quote(f"{ticker} stock news when:7d")
+        url = f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=6) as response:
+                root = ET.fromstring(response.read())
+            for item in root.findall('.//item')[:20]:
+                raw_title = (item.find('title').text if item.find('title') is not None else "") or ""
+                raw_link = (item.find('link').text if item.find('link') is not None else "#") or "#"
+                pub_str = (item.find('pubDate').text if item.find('pubDate') is not None else "") or ""
+                try:
+                    pub_dt = parsedate_to_datetime(pub_str)
+                except Exception:
+                    pub_dt = None
+                date_display = pub_str[:16] if pub_str else ""
+                _classify_and_accumulate(raw_title, raw_link, pub_str, pub_dt, date_display)
+        except Exception as e:
+            LOG.warning("RSS fetch failed for %s: %s", ticker, e)
+
+    catalyst_score = ch_score + ebh_score - bh_score - gh_score
     if earnings_imminent:
         catalyst_score -= 5
+
     llm_insight = ""
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if use_llm and api_key and news_items:
@@ -948,19 +1098,33 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=False):
                 llm_insight = resp.json()["choices"][0]["message"]["content"].strip()
         except Exception:
             pass
+
     catalyst_summary = []
-    if ch_ > 0: catalyst_summary.append(f"🤝 계약/파트너십 ({ch_}건)")
-    if ebh > 0: catalyst_summary.append(f"📊 실적 호조 ({ebh}건)")
-    if bh > 0: catalyst_summary.append(f"🚨 악재 ({bh}건 주의)")
-    if gh > 0: catalyst_summary.append(f"🌍 거시 변수 ({gh}건)")
+    if ch_cnt > 0: catalyst_summary.append(f"🤝 계약/파트너십 ({ch_cnt}건)")
+    if ebh_cnt > 0: catalyst_summary.append(f"📊 실적 호조 ({ebh_cnt}건)")
+    if bh_cnt > 0:
+        if bad_recent_cnt > 0:
+            catalyst_summary.append(f"🚨 악재 ({bad_recent_cnt}건 최근/48h, 총 {bh_cnt}건)")
+        else:
+            catalyst_summary.append(f"ℹ️ 과거 악재 {bh_cnt}건 (최근 48h 없음 — 영향 제한적)")
+    if gh_cnt > 0: catalyst_summary.append(f"🌍 거시 변수 ({gh_cnt}건)")
     if llm_insight: catalyst_summary.append(f"🤖 LLM: {llm_insight}")
     if not catalyst_summary: catalyst_summary.append("특이 돌발 악재 없음 (수급 중심)")
 
-    return {"macro_score": macro_score, "macro_alerts": macro_alerts,
-            "earnings_info": html.escape(earnings_info), "earnings_imminent": earnings_imminent,
-            "contract_hits": ch_, "earnings_bull_hits": ebh, "bad_news_hits": bh, "geo_hits": gh,
-            "catalyst_score": catalyst_score, "catalyst_summary": catalyst_summary,
-            "news_items": news_items, "tnx": tnx, "wti": wti, "vix": vix}
+    return {
+        "macro_score": macro_score, "macro_alerts": macro_alerts,
+        "earnings_info": html.escape(earnings_info), "earnings_imminent": earnings_imminent,
+        "contract_hits": ch_cnt,
+        "earnings_bull_hits": ebh_cnt,
+        "bad_news_hits": bad_recent_cnt,
+        "bad_news_total": bh_cnt,
+        "bad_newest_hours": round(bad_newest_hours, 1) if bad_newest_hours < 9999 else None,  # ⭐ Patch A
+        "geo_hits": gh_cnt,
+        "catalyst_score": round(catalyst_score, 2),
+        "catalyst_summary": catalyst_summary,
+        "news_items": news_items,
+        "tnx": tnx, "wti": wti, "vix": vix,
+    }
 
 
 # ==============================================================================
@@ -1356,7 +1520,7 @@ def build_full_risk_report(holdings, benchmark="SPY"):
 
 
 # ==============================================================================
-# 14) TAB 1: 개별 종목 분석
+# 14) TAB 1: 개별 종목 분석 (⭐ Patch C 반영)
 # ==============================================================================
 def render_tab_analysis(indices, usd_krw):
     if "selected_ticker" not in st.session_state:
@@ -1439,6 +1603,39 @@ def render_tab_analysis(indices, usd_krw):
     indices_key = normalize_indices_key(indices)
     use_llm = bool(os.getenv("OPENAI_API_KEY"))
     cat = analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=use_llm)
+
+    # ⭐⭐⭐ Patch C: 악재 나이 기반 회복 보정 + 캐시 변이 방지 ⭐⭐⭐
+    recovery_bonus = 0
+    recovery_note = ""
+    try:
+        has_any_bad = (cat.get("bad_news_hits", 0) >= 1 or cat.get("bad_news_total", 0) >= 1)
+        bad_age_h = cat.get("bad_newest_hours")
+        min_age = CFG["news"]["recovery_min_age_hours"]
+
+        if has_any_bad and bad_age_h is not None and bad_age_h >= min_age:
+            h_ref = get_history(ticker, period="1mo")
+            if len(h_ref) >= 3:
+                # 악재 경과일수에 맞춘 참조 종가 (2~5거래일 범위)
+                trading_days_since = max(2, min(5, int(round(bad_age_h / 24.0)) + 1))
+                idx_ref = max(1, len(h_ref) - trading_days_since)
+                ref_px = float(h_ref['Close'].iloc[idx_ref])
+                if ref_px > 0:
+                    rec_pct = (current_price / ref_px - 1) * 100
+                    if rec_pct >= CFG["news"]["recovery_pct_forgive"]:
+                        recovery_bonus = int(CFG["news"]["recovery_bonus"])
+                        recovery_note = (
+                            f"악재({bad_age_h/24:.1f}일 경과) 후 +{rec_pct:.1f}% 회복 "
+                            f"→ 시장 소화 완료 판정 (+{recovery_bonus}점 환급)"
+                        )
+    except Exception:
+        pass
+
+    # ⭐ 캐시 변이 방지: dict/list 얕은 복사
+    cat = dict(cat)
+    cat["catalyst_summary"] = list(cat.get("catalyst_summary", []))
+    if recovery_note:
+        cat["catalyst_summary"].append(f"💡 {recovery_note}")
+
     noise_eval = evaluate_holding_noise_filter(ticker, hist)
     short_data = get_short_interest_data(ticker)
     gex_data = get_gamma_wall_and_gex_data(ticker, current_price)
@@ -1545,14 +1742,14 @@ def render_tab_analysis(indices, usd_krw):
         seed_alloc = "계좌의 5~10%"
         sizing_rule = "박스 상단 50% 익절, 돌파 시 잔량 홀딩"
 
-    grand = int(np.clip(master_score + cat['macro_score'] + cat['catalyst_score'] + squeeze_eval['bonus'], 0, 100))
+    grand = int(np.clip(master_score + cat['macro_score'] + cat['catalyst_score'] + recovery_bonus + squeeze_eval['bonus'], 0, 100))
     has_macro_crisis = cat['macro_score'] <= -15
-    has_bad = cat['bad_news_hits'] >= 2
+    has_bad = cat['bad_news_hits'] >= 2 and recovery_bonus == 0
     has_good = cat['contract_hits'] >= 1 or cat['earnings_bull_hits'] >= 1
 
     if has_bad and current_price < ema20:
         fv_title, fv_color = "🚨 [최종 결론] 개별 악재 + 추세 이탈 — 진입 금지", "#f43f5e"
-        fv_summary = f"악재 {cat['bad_news_hits']}건 + 20일선 이탈. 물타기 중단, 현금 수성."
+        fv_summary = f"악재 {cat['bad_news_hits']}건(최근 48h) + 20일선 이탈. 물타기 중단, 현금 수성."
     elif has_macro_crisis and "BUY" in meta_action:
         fv_title, fv_color = "⚠️ [최종 결론] 차트 돌파지만 매크로 경보 — 시드 50% 축소", "#f59e0b"
         fv_summary = f"매크로 경보 발령. 시드 절반만 진입 + 타이트 스탑(-{ts_tight_pct:.1f}%)."
@@ -1561,8 +1758,9 @@ def render_tab_analysis(indices, usd_krw):
         fv_summary = "실적 직전 풀시드 금지. 선취매 50%만 유지."
     elif grand >= 75 and ("BUY" in meta_action or "HOLD" in meta_action):
         fv_title, fv_color = "🏆 [최종 결론] 매크로 안정 + 6대 대가 승인", "#10b981"
-        bonus = "스퀴즈 모멘텀 가세 + " if squeeze_eval['bonus'] >= 5 else ""
-        fv_summary = f"{bonus}종합 {grand}점. {seed_alloc} 진입 후 1차(${target_1:,.2f}) {int(tp1_ratio*100)}% 익절, 코어 트레일링 -{ts_core_pct:.1f}%."
+        bonus_txt = "스퀴즈 모멘텀 가세 + " if squeeze_eval['bonus'] >= 5 else ""
+        rec_txt = f"[악재 소화 보정 +{recovery_bonus}] " if recovery_bonus else ""
+        fv_summary = f"{rec_txt}{bonus_txt}종합 {grand}점. {seed_alloc} 진입 후 1차(${target_1:,.2f}) {int(tp1_ratio*100)}% 익절, 코어 트레일링 -{ts_core_pct:.1f}%."
     elif "PANIC" in meta_action:
         fv_title, fv_color = "🟢 [최종 결론] 극단 공포 투매 클라이맥스", "#34d399"
         fv_summary = f"RSI {rsi:.1f}. 1차 반등(${target_1:,.2f}) 시 70% 수익 확정."
@@ -1577,6 +1775,7 @@ def render_tab_analysis(indices, usd_krw):
     ts_from_curr_core = current_price * (1 - ts_core_pct / 100)
     ts_from_high_core = box_high * (1 - ts_core_pct / 100)
 
+    rec_badge = f'<span class="badge badge-teal">💡 악재 소화 +{recovery_bonus}</span>' if recovery_bonus else ""
     render_html(f"""
     <div class="main-hero-card">
         <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:6px;">
@@ -1585,6 +1784,7 @@ def render_tab_analysis(indices, usd_krw):
             <span class="badge {meta_badge}">{meta_action.split('(')[0].strip()}</span>
             <span class="badge badge-purple">종합 {grand}점</span>
             <span class="badge {squeeze_eval['badge']}">스퀴즈 {squeeze_eval['sq_score']}점</span>
+            {rec_badge}
         </div>
         <div style="font-size:30px; font-weight:800; font-family:'JetBrains Mono'; margin:6px 0;" class="{color}">
             ${current_price:,.2f} <span style="font-size:16px;">{arrow} ${abs(change):,.2f} ({change_pct:+.2f}%)</span>
@@ -1615,7 +1815,8 @@ def render_tab_analysis(indices, usd_krw):
                 <div style="font-size:11px; font-weight:800; color:#fbbf24; margin-bottom:4px;">👑 ③ 6대 대가 + 스퀴즈</div>
                 <div style="font-size:10px; color:#cbd5e1; line-height:1.45;">
                     • 6대 거장: <b class="text-white">{pass_count}/6 ({master_score}점)</b><br>
-                    • 스퀴즈 가산: <b class="text-orange">+{squeeze_eval['bonus']}점</b>
+                    • 스퀴즈 가산: <b class="text-orange">+{squeeze_eval['bonus']}점</b><br>
+                    • 악재 소화: <b class="text-teal">+{recovery_bonus}점</b>
                 </div>
             </div>
         </div>
@@ -1907,7 +2108,9 @@ def render_tab_analysis(indices, usd_krw):
     fig.update_yaxes(gridcolor="#1e293b", showgrid=True)
     st.plotly_chart(fig, use_container_width=True)
 
-    render_html("""<div style="font-weight:700; color:#38bdf8; font-size:13px; margin:14px 0 8px 0;">📰 실시간 뉴스 & AI 판독</div>""")
+    render_html("""<div style="font-weight:700; color:#38bdf8; font-size:13px; margin:14px 0 8px 0;">📰 실시간 뉴스 & AI 판독 (7일 이내 · 신선도 가중치 적용)</div>""")
+    if not cat['news_items']:
+        render_html("""<div style="color:#64748b; font-size:12px; padding:12px; background:#0f172a; border:1px solid #1e293b; border-radius:8px;">최근 7일 이내 관련 뉴스가 없습니다.</div>""")
     for n in cat['news_items']:
         render_html(f"""
         <div style="background:#0f172a; border:1px solid #1e293b; border-radius:8px; padding:10px 14px; margin-bottom:8px;">
