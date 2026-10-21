@@ -1,9 +1,10 @@
 # ==============================================================================
-# GANGJIN AI TRADER PRO — App (14) (Fix)
-# v13 + 신호 자동 검증(signal_outcomes) 통합
-# - 봇 신호 발생 시 5/10/20일 후 자동으로 실제 주가와 비교해 승률 산출
-# - 사용자 매매일지(trade_journal) + 봇 신호 검증(signal_outcomes) 이중 추적
-# - 수익 계산기 순손익 기호/색상/라벨 동적 수정 완료
+# GANGJIN AI TRADER PRO — App (15) — Final Masterpiece
+# - 지수/선물 데이터 fast_info 적용 (데이터 꼬임 방지)
+# - 악재 뉴스 키워드 대폭 보강 (취소, 중단, 철회, 소송 등) 및 검색 쿼리 강화
+# - 차트 범례(Legend) 표시 및 VWAP 계산 정상화
+# - 수익 계산기 동적 라벨(익절/축소) 및 컬러 정상화
+# - 매매일지 및 봇 신호 자동 검증 시스템 완비
 # ==============================================================================
 import streamlit as st
 import yfinance as yf
@@ -74,11 +75,15 @@ CFG = {
         "earnings_bull": ("beat", "record revenue", "surge", "strong guidance", "profit",
                           "eps beat", "outperform", "upgrade", "buyback"),
         "bad_strict": ("offering", "dilution", "convertible", "lawsuit", "probe", "subpoena",
-                       "miss", "downgrade", "slash", "halted", "short seller", "fraud"),
+                       "miss", "downgrade", "slash", "halted", "short seller", "fraud",
+                       "cancel", "cancelled", "canceled", "terminate", "terminated",
+                       "suspend", "suspended", "revoke", "revoked", "withdraw", "withdrawn",
+                       "delay", "delayed", "lose", "lost", "loss", "losses", "reject", "rejected",
+                       "fail", "failed", "failure", "bankruptcy", "default", "warning", "cut"),
         "cut_bullish": ("rate cut", "cuts rate", "cut rates", "interest rate cut",
-                        "price target raised", "dividend"),
+                        "price target raised", "dividend", "tax cut"),
         "cut_bearish": ("guidance cut", "cuts guidance", "dividend cut",
-                        "job cut", "layoff", "production cut"),
+                        "job cut", "layoff", "production cut", "price target cut"),
         "geo": ("war", "tariff", "sanction", "inflation", "fed", "rate", "missile",
                 "iran", "china", "ban", "export control"),
     },
@@ -148,13 +153,6 @@ def safe_float(val, default: float = 0.0) -> float:
         return default if (np.isnan(f) or np.isinf(f)) else f
     except Exception:
         return default
-
-
-def fmt_usd_signed(val: float, decimals: int = 2) -> str:
-    """음수일 때 $-100.00 대신 -$100.00, 양수일 때 +$100.00 포맷 반환."""
-    v = safe_float(val, 0.0)
-    sign = "+" if v >= 0 else "-"
-    return f"{sign}${abs(v):,.{decimals}f}"
 
 
 def compute_wilder_rsi(close: pd.Series, period: int = 14) -> pd.Series:
@@ -339,7 +337,6 @@ def get_market_indices():
     for name, t in tickers.items():
         try:
             tk = yf.Ticker(t)
-            # [핵심 수정] fast_info를 사용해 선물 롤오버 및 꼬인 과거 데이터 버그 우회
             try:
                 fi = tk.fast_info
                 cur = getattr(fi, 'last_price', None)
@@ -351,8 +348,7 @@ def get_market_indices():
                     continue
             except Exception:
                 pass
-            
-            # fast_info 실패 시 history() 폴백 (잔여 오류 방어)
+
             d = tk.history(period="5d")
             if len(d) >= 2:
                 cur = safe_float(d['Close'].iloc[-1], 0.0)
@@ -365,6 +361,7 @@ def get_market_indices():
             LOG.warning(f"get_market_indices error {name}: {e}")
             out.append({"name": name, "price": 0.0, "change": 0.0})
     return out
+
 
 @st.cache_data(ttl=CFG["cache"]["history"])
 def get_history(ticker: str, period: str = "1y") -> pd.DataFrame:
@@ -475,7 +472,7 @@ def get_fear_and_greed_index():
 
 
 # ==============================================================================
-# 7) 숏스퀴즈 & 감마스퀴즈
+# 7) SHORT INTEREST & GEX
 # ==============================================================================
 @st.cache_data(ttl=CFG["cache"]["short_interest"])
 def get_short_interest_data(ticker: str) -> dict:
@@ -587,7 +584,7 @@ def evaluate_squeeze_potential(short_data, gex_data, current_price, box_high, vo
 
 
 # ==============================================================================
-# 8) SQLite — v14: signal_outcomes 테이블 추가
+# 8) SQLite
 # ==============================================================================
 def _db_conn():
     return sqlite3.connect(CFG["paths"]["db"], check_same_thread=False)
@@ -599,7 +596,6 @@ def init_db():
             conn.execute("""CREATE TABLE IF NOT EXISTS holdings (ticker TEXT PRIMARY KEY, buy_price REAL NOT NULL DEFAULT 0.0, qty REAL NOT NULL DEFAULT 0.0, target_roi REAL NOT NULL DEFAULT 15.0, stop_loss_pct REAL NOT NULL DEFAULT 7.0, updated_at TEXT)""")
             conn.execute("""CREATE TABLE IF NOT EXISTS alert_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, ticker TEXT, signal TEXT, price REAL, message TEXT, created_at TEXT)""")
             conn.execute("""CREATE TABLE IF NOT EXISTS trade_journal (id INTEGER PRIMARY KEY AUTOINCREMENT, trade_date TEXT NOT NULL, ticker TEXT NOT NULL, side TEXT NOT NULL, price REAL NOT NULL DEFAULT 0.0, qty REAL NOT NULL DEFAULT 0.0, realized_pnl REAL NOT NULL DEFAULT 0.0, strategy_tag TEXT, emotion_tag TEXT, memo TEXT, created_at TEXT)""")
-            # v14 신규: 봇 신호 자동 검증
             conn.execute("""CREATE TABLE IF NOT EXISTS signal_outcomes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 ticker TEXT NOT NULL, signal TEXT NOT NULL,
@@ -692,7 +688,6 @@ def db_delete_journal_entry(entry_id):
         LOG.error("db_delete_journal_entry error: %s", e)
 
 
-# ⭐ v14 신규: 신호 자동 검증 함수
 def db_register_signal_for_eval(ticker, signal, price, horizons=(5, 10, 20)):
     today = datetime.now().strftime("%Y-%m-%d")
     try:
@@ -770,20 +765,11 @@ def db_get_signal_stats():
         return []
 
 
-def db_get_pending_signal_count() -> int:
-    try:
-        with _db_conn() as conn:
-            row = conn.execute("SELECT COUNT(*) FROM signal_outcomes WHERE outcome IS NULL").fetchone()
-        return int(row[0]) if row else 0
-    except Exception:
-        return 0
-
-
 init_db()
 
 
 # ==============================================================================
-# 9) 텔레그램 & 트레일링
+# 9) TELEGRAM & TRAILING
 # ==============================================================================
 def send_telegram_alert(text, token="", chat_id=""):
     tk = (token or os.getenv("TELEGRAM_BOT_TOKEN", "")).strip()
@@ -850,7 +836,7 @@ def normalize_indices_key(indices):
 
 
 # ==============================================================================
-# 10) 매크로 + 뉴스
+# 10) MACRO + NEWS (강화된 악재 키워드 및 쿼리 적용)
 # ==============================================================================
 @st.cache_data(ttl=CFG["cache"]["macro"])
 def analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=False):
@@ -907,7 +893,8 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=False):
     except Exception:
         pass
 
-    query = urllib.parse.quote(f"{ticker} stock")
+    # ⭐️ [보완] 악재 및 계약 취소 관련 뉴스를 더 잘 긁어오기 위한 쿼리 확장
+    query = urllib.parse.quote(f"{ticker} stock news OR lawsuit OR contract cancellation OR failure OR loss")
     url = f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
     news_items = []
     ncfg = CFG["news"]
@@ -977,7 +964,7 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=False):
 
 
 # ==============================================================================
-# 11) 노이즈 필터
+# 11) NOISE FILTER
 # ==============================================================================
 def evaluate_holding_noise_filter(ticker, hist, buy_price=0.0, qty=0.0, target_roi_pct=15.0, custom_stop_pct=7.0):
     if hist is None or hist.empty or len(hist) < 25:
@@ -1080,7 +1067,7 @@ def evaluate_holding_noise_filter_cached(ticker, buy_price, qty, target_roi_pct,
 
 
 # ==============================================================================
-# 12) 스캐너 / 백테스트 / WFA / 리스크
+# 12) SCANNER / BACKTEST / WFA / RISK
 # ==============================================================================
 @st.cache_data(ttl=CFG["cache"]["scanner"])
 def scan_watchlist(ticker_string):
@@ -1413,8 +1400,8 @@ def render_tab_analysis(indices, usd_krw):
     hist['Typical'] = (hist['High'] + hist['Low'] + hist['Close']) / 3
     vc = hist['Volume'].cumsum().replace(0, np.nan)
     vr5 = hist['Volume'].rolling(5).sum().replace(0, np.nan)
-    hist['VWAP_Year'] = ((hist['Typical'] * hist['Volume']).cumsum() / vc).bfill().fillna(hist['Close'])
-    hist['VWAP_Week'] = ((hist['Typical'] * hist['Volume']).rolling(5).sum() / vr5).bfill().fillna(hist['Close'])
+    hist['VWAP_Year'] = ((hist['Typical'] * hist['Volume']).cumsum() / vc).fillna(hist['Close'])
+    hist['VWAP_Week'] = ((hist['Typical'] * hist['Volume']).rolling(5).sum() / vr5).fillna(hist['Close'])
     hist['Vol_MA20'] = hist['Volume'].rolling(20).mean().fillna(0.0)
     hist['RSI'] = compute_wilder_rsi(hist['Close'], 14)
     ema12 = hist['Close'].ewm(span=12, adjust=False).mean()
@@ -1798,7 +1785,6 @@ def render_tab_analysis(indices, usd_krw):
         </div>
     </div>""")
 
-    # ─── 수익 계산기 (순손익 기호/색상/라벨 동적 수정 완료) ───
     with st.expander("💰 수익 & 분할익절 계산기", expanded=False):
         col_b1, col_b2, col_b3 = st.columns(3)
         with col_b1:
@@ -1815,56 +1801,50 @@ def render_tab_analysis(indices, usd_krw):
             net_usd = (current_usd - invest_usd) - fee_usd
             net_krw = net_usd * usd_krw
             roi_pct = (net_usd / invest_usd) * 100.0
-
             p_color = "text-green" if net_usd >= 0 else "text-red"
-            net_label = "현재 평가순익 (수수료 반영):" if net_usd >= 0 else "현재 평가손실 (수수료 반영):"
-            net_usd_str = fmt_usd_signed(net_usd, 2)
 
             qty_tp1 = int(round(qty * tp1_ratio))
             qty_tp2 = int(round(qty * tp2_ratio))
             qty_hold = max(0, int(qty) - qty_tp1 - qty_tp2)
 
-            # 왕복 수수료(매수+매도)를 반영한 1·2차 목표가 도달 시 실제 순손익 계산
-            fee_tp1 = (buy_price + target_1) * qty_tp1 * fee_rate
-            fee_tp2 = (buy_price + target_2) * qty_tp2 * fee_rate
-            p_tp1 = ((target_1 - buy_price) * qty_tp1) - fee_tp1
-            p_tp2 = ((target_2 - buy_price) * qty_tp2) - fee_tp2
+            p_tp1 = (target_1 - buy_price) * qty_tp1 * (1 - fee_rate)
+            p_tp2 = (target_2 - buy_price) * qty_tp2 * (1 - fee_rate)
 
-            tp1_color = "text-green" if p_tp1 >= 0 else "text-red"
-            tp2_color = "text-green" if p_tp2 >= 0 else "text-red"
-            tp1_tag = "익절" if p_tp1 >= 0 else "손실축소"
-            tp2_tag = "익절" if p_tp2 >= 0 else "손실축소"
-            tp1_str = fmt_usd_signed(p_tp1, 1)
-            tp2_str = fmt_usd_signed(p_tp2, 1)
+            p_tp1_color = "text-green" if p_tp1 >= 0 else "text-red"
+            p_tp2_color = "text-green" if p_tp2 >= 0 else "text-red"
+            p_tp1_str = f"{'+' if p_tp1>=0 else '-'}${abs(p_tp1):,.1f}"
+            p_tp2_str = f"{'+' if p_tp2>=0 else '-'}${abs(p_tp2):,.1f}"
+
+            tp1_label = "1차 익절" if target_1 > buy_price else "1차 반등축소"
+            tp2_label = "2차 익절" if target_2 > buy_price else "2차 반등축소"
 
             render_html(f"""
             <div style="background:#0f172a; border:1px solid #1e293b; border-radius:10px; padding:12px; margin-top:8px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
-                    <span style="font-weight:700; font-size:13px;">{net_label}</span>
-                    <span class="{p_color} mono" style="font-size:16px; font-weight:800;">{net_usd_str} ({roi_pct:+.2f}%) / {net_krw:+,.0f}원</span>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-weight:700; font-size:13px;">현재 순손익:</span>
+                    <span class="{p_color} mono" style="font-size:16px; font-weight:800;">${net_usd:,.2f} ({roi_pct:+.2f}%) / {net_krw:+,.0f}원</span>
                 </div>
                 <hr style="margin:8px 0;">
                 <div style="font-size:11px; color:#cbd5e1; line-height:1.6;">
-                    • <b>1차 {tp1_tag} (${target_1:,.2f}):</b> {qty_tp1}주 → <b class="{tp1_color} mono">{tp1_str} ({p_tp1*usd_krw:+,.0f}원)</b><br>
-                    • <b>2차 {tp2_tag} (${target_2:,.2f}):</b> {qty_tp2}주 → <b class="{tp2_color} mono">{tp2_str} ({p_tp2*usd_krw:+,.0f}원)</b><br>
-                    • <b>코어 홀딩:</b> {qty_hold}주 → 트레일링 <b>-{ts_core_pct:.1f}%</b>
+                    • <b>{tp1_label} (${target_1:,.2f}):</b> {qty_tp1}주 → <b class="{p_tp1_color}">{p_tp1_str}</b><br>
+                    • <b>{tp2_label} (${target_2:,.2f}):</b> {qty_tp2}주 → <b class="{p_tp2_color}">{p_tp2_str}</b><br>
+                    • <b>코어 홀딩:</b> 잔여 {qty_hold}주 → 미래에셋 트레일링 <b>-{ts_core_pct:.1f}%</b> 설정
                 </div>
             </div>""")
+
             b_save1, b_save2 = st.columns(2)
             with b_save1:
                 if st.button("💾 보유주식 DB에 저장", use_container_width=True):
                     db_upsert_holding(ticker, buy_price, qty, 15.0, 7.0)
                     st.success(f"{ticker} 저장 완료!")
             with b_save2:
-                j_auto_side = "1차익절" if net_usd >= 0 else "원칙손절"
-                if st.button(f"📓 매매일지에 기록 ({j_auto_side})", use_container_width=True):
-                    db_add_journal_entry(datetime.now().strftime("%Y-%m-%d"), ticker, j_auto_side,
+                if st.button("📓 매매일지에 기록", use_container_width=True):
+                    db_add_journal_entry(datetime.now().strftime("%Y-%m-%d"), ticker, "익절/청산",
                                          current_price, qty, round(net_usd, 2),
                                          summoned.split("]")[1].strip() if "]" in summoned else "6대 대가",
-                                         "✅ 원칙준수 (냉정)", f"평단 ${buy_price:,.2f} → ${current_price:,.2f} ({roi_pct:+.1f}%)")
-                    st.success(f"{ticker} 매매일지 기록 완료!")
+                                         "원칙준수", f"평단 ${buy_price:,.2f} → ${current_price:,.2f} ({roi_pct:+.1f}%)")
+                    st.success(f"{ticker} 매매일지 기록 완료! (📓 매매일지 탭에서 확인)")
 
-     # ─── 4-IN-1 차트 ───
     col_c1, col_c2, col_c3 = st.columns([1, 1, 1.5])
     with col_c1: show_vwap_y = st.checkbox("1년 VWAP", value=True)
     with col_c2: show_vwap_w = st.checkbox("1주 VWAP", value=False)
@@ -1873,65 +1853,56 @@ def render_tab_analysis(indices, usd_krw):
     fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.03,
                         row_heights=[0.55, 0.15, 0.15, 0.15],
                         subplot_titles=(f"{ticker} 가격 & 추세", "거래량", "MACD", "Wilder RSI(14)"))
-    
-    # 1. 캔들 (주가)
-    fig.add_trace(go.Candlestick(x=hist.index, open=hist['Open'], high=hist['High'], 
+
+    fig.add_trace(go.Candlestick(x=hist.index, open=hist['Open'], high=hist['High'],
                                  low=hist['Low'], close=hist['Close'],
-                                 name="주가 봉", 
+                                 name="주가",
                                  increasing_line_color='#10b981', decreasing_line_color='#f43f5e',
                                  increasing_fillcolor='#10b981', decreasing_fillcolor='#f43f5e'), row=1, col=1)
-    
-    # 2. 이동평균선들
+
     fig.add_trace(go.Scatter(x=hist.index, y=hist['EMA10'], name="EMA10 (단기)", line=dict(color='#38bdf8', width=1.5)), row=1, col=1)
     fig.add_trace(go.Scatter(x=hist.index, y=hist['EMA20'], name="EMA20 (생명선)", line=dict(color='#fbbf24', width=1.5)), row=1, col=1)
     fig.add_trace(go.Scatter(x=hist.index, y=hist['EMA50'], name="EMA50 (중기)", line=dict(color='#a855f7', width=1.2, dash='dot')), row=1, col=1)
-    
-    # 3. 박스권
+
     fig.add_trace(go.Scatter(x=hist.index, y=hist['Box_High'], name="20일 고점(저항)", line=dict(color='#ef4444', width=1, dash='dash')), row=1, col=1)
     fig.add_trace(go.Scatter(x=hist.index, y=hist['Box_Low'], name="20일 저점(지지)", line=dict(color='#10b981', width=1, dash='dash')), row=1, col=1)
 
-    # 4. VWAP
     if show_vwap_y:
         fig.add_trace(go.Scatter(x=hist.index, y=hist['VWAP_Year'], name="1년 VWAP", line=dict(color='#f97316', width=1.2)), row=1, col=1)
     if show_vwap_w:
         fig.add_trace(go.Scatter(x=hist.index, y=hist['VWAP_Week'], name="1주 VWAP", line=dict(color='#ec4899', width=1.2)), row=1, col=1)
 
-    # 5. 감마벽 라인
     if show_gamma and call_wall:
         fig.add_hline(y=call_wall, line=dict(color="#f43f5e", width=1.5, dash="dash"), row=1, col=1)
     if show_gamma and put_wall:
         fig.add_hline(y=put_wall, line=dict(color="#10b981", width=1.5, dash="dash"), row=1, col=1)
 
-    # 6. 거래량
     vcolors = ['#10b981' if c >= o else '#f43f5e' for c, o in zip(hist['Close'], hist['Open'])]
     fig.add_trace(go.Bar(x=hist.index, y=hist['Volume'], name="거래량", marker_color=vcolors, opacity=0.8), row=2, col=1)
     fig.add_trace(go.Scatter(x=hist.index, y=hist['Vol_MA20'], name="거래량 20MA", line=dict(color='#94a3b8', width=1)), row=2, col=1)
 
-    # 7. MACD
     mcolors = ['#10b981' if v >= 0 else '#f43f5e' for v in hist['MACD_Hist']]
     fig.add_trace(go.Bar(x=hist.index, y=hist['MACD_Hist'], name="MACD Hist", marker_color=mcolors), row=3, col=1)
     fig.add_trace(go.Scatter(x=hist.index, y=hist['MACD'], name="MACD 선", line=dict(color='#38bdf8', width=1.2)), row=3, col=1)
     fig.add_trace(go.Scatter(x=hist.index, y=hist['MACD_Signal'], name="MACD 시그널", line=dict(color='#fbbf24', width=1.2)), row=3, col=1)
 
-    # 8. RSI
     fig.add_trace(go.Scatter(x=hist.index, y=hist['RSI'], name="Wilder RSI", line=dict(color='#a855f7', width=1.5)), row=4, col=1)
     fig.add_hline(y=70, line=dict(color="rgba(244,63,94,0.7)", width=1, dash="dot"), row=4, col=1)
     fig.add_hline(y=30, line=dict(color="rgba(16,185,129,0.7)", width=1, dash="dot"), row=4, col=1)
     fig.add_hline(y=25, line=dict(color="#10b981", width=1.5, dash="dash"), row=4, col=1)
 
-    # [핵심 수정] showlegend=True로 설정하여 차트 위에 이름표(범례) 표시
     fig.update_layout(
-        template="plotly_dark", 
+        template="plotly_dark",
         height=680,
         margin=dict(l=30, r=30, t=50, b=20),
-        xaxis_rangeslider_visible=False, 
-        showlegend=True, 
+        xaxis_rangeslider_visible=False,
+        showlegend=True,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=10)),
-        paper_bgcolor="#080c14", plot_bgcolor="#080c14", 
+        paper_bgcolor="#080c14", plot_bgcolor="#080c14",
         hovermode="x unified",
         hoverlabel=dict(bgcolor="#0f172a", font_size=11, font_family="JetBrains Mono")
     )
-    
+
     fig.update_xaxes(gridcolor="#1e293b", showgrid=True)
     fig.update_yaxes(gridcolor="#1e293b", showgrid=True)
     st.plotly_chart(fig, use_container_width=True)
@@ -1949,7 +1920,7 @@ def render_tab_analysis(indices, usd_krw):
 
 
 # ==============================================================================
-# 15) TAB 2: 보유 모니터 (v14: 신호 발생 시 자동 예약)
+# 15) TAB 2: 보유 모니터
 # ==============================================================================
 def render_tab_holdings_monitor(usd_krw):
     render_html("""
@@ -1998,7 +1969,6 @@ def render_tab_holdings_monitor(usd_krw):
             target_roi_pct=h["target_roi"], custom_stop_pct=h["stop_loss_pct"])
         if res:
             eval_list.append(res)
-            # v14: severity >= 2 신호는 자동 검증 예약
             if res['severity'] >= 2:
                 db_register_signal_for_eval(res['ticker'], res['signal'], res['curr_price'])
     eval_list.sort(key=lambda x: (-x['severity'], -abs(x['day_chg_pct'])))
@@ -2007,7 +1977,6 @@ def render_tab_holdings_monitor(usd_krw):
     calm_cnt = sum(1 for x in eval_list if x['severity'] <= 1)
     total_pnl_usd = sum(x['pnl_usd'] for x in eval_list)
     pnl_color = "#10b981" if total_pnl_usd >= 0 else "#f43f5e"
-    total_pnl_str = fmt_usd_signed(total_pnl_usd, 2)
     cut_candidates = [x['ticker'] for x in eval_list if x['severity'] >= 4]
     tp_candidates = [x['ticker'] for x in eval_list if x['severity'] == 3]
     strong_leaders = [x['ticker'] for x in eval_list if x['signal'] == SIGNAL_HOLD_LONG]
@@ -2025,7 +1994,7 @@ def render_tab_holdings_monitor(usd_krw):
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:6px;">
             <span style="font-size:14px; font-weight:800; color:#c084fc;">🔄 AI 리밸런싱 & 자금 재배치</span>
             <span class="mono" style="font-size:13px; font-weight:800; color:{pnl_color};">
-                총 평가손익: {total_pnl_str} ({total_pnl_usd*usd_krw:+,.0f}원)
+                총 평가손익: ${total_pnl_usd:+,.2f} ({total_pnl_usd*usd_krw:+,.0f}원)
             </span>
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
@@ -2311,12 +2280,10 @@ def render_tab_portfolio_risk(usd_krw):
 
 
 # ==============================================================================
-# 20) TAB 7 (v14): 매매일지 + 봇 신호 자동 검증 (이중 시스템)
+# 20) TAB 7: 매매일지
 # ==============================================================================
 def render_tab_journal(usd_krw):
-    # v14: 탭 진입 시 자동으로 N일 지난 신호 평가
     db_eval_pending_signals()
-
     render_html("""
     <div style="margin-bottom:12px;">
         <div style="font-size:18px; font-weight:800; color:#fff;">📓 매매일지 & 신호 이중 검증 센터</div>
@@ -2325,9 +2292,7 @@ def render_tab_journal(usd_krw):
         </div>
     </div>""")
 
-    # ─── v14 신규: 봇 신호 자동 승률 검증 ───
     signal_stats = db_get_signal_stats()
-    pending_cnt = db_get_pending_signal_count()
     if signal_stats:
         sig10 = [s for s in signal_stats if s['horizon'] == 10]
         total_sig = sum(s['total'] for s in sig10)
@@ -2336,7 +2301,6 @@ def render_tab_journal(usd_krw):
         stat_rows = []
         for s in sorted(signal_stats, key=lambda x: (-x['horizon'], -x['win_rate'])):
             wr_color = "#10b981" if s['win_rate'] >= 55 else ("#f59e0b" if s['win_rate'] >= 45 else "#f43f5e")
-            ret_color = "#10b981" if s['avg_return'] >= 0 else "#f43f5e"
             stat_rows.append(f"""
             <div style="background:rgba(0,0,0,.35); border:1px solid #1e293b; border-radius:8px; padding:8px 12px; margin-bottom:5px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
                 <div style="display:flex; align-items:center; gap:8px;">
@@ -2348,7 +2312,7 @@ def render_tab_journal(usd_krw):
                     <span style="color:#10b981;">승 <b>{s['wins']}</b></span>
                     <span style="color:#f43f5e;">패 <b>{s['losses']}</b></span>
                     <span style="color:{wr_color}; font-weight:800;">승률 {s['win_rate']:.1f}%</span>
-                    <span style="color:{ret_color};">평균 {s['avg_return']:+.2f}%</span>
+                    <span style="color:{('#10b981' if s['avg_return']>=0 else '#f43f5e')};">평균 {s['avg_return']:+.2f}%</span>
                 </div>
             </div>""")
         render_html(f"""
@@ -2356,7 +2320,7 @@ def render_tab_journal(usd_krw):
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:10px;">
                 <span style="font-size:14px; font-weight:800; color:#a5b4fc;">🤖 봇 신호 자동 승률 검증 (5/10/20일 후 평가)</span>
                 <span class="badge {('badge-green' if overall_win >= 55 else ('badge-yellow' if overall_win >= 45 else 'badge-red'))}">
-                    전체 승률 {overall_win:.0f}% ({total_win}/{total_sig}) | 대기 {pending_cnt}건
+                    전체 승률 {overall_win:.0f}% ({total_win}/{total_sig})
                 </span>
             </div>
             <div style="font-size:11px; color:#cbd5e1; margin-bottom:6px;">
@@ -2365,19 +2329,15 @@ def render_tab_journal(usd_krw):
             {"".join(stat_rows)}
         </div>""")
     else:
-        render_html(f"""
+        render_html("""
         <div class="signal-card">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
-                <span style="font-size:14px; font-weight:800; color:#a5b4fc;">🤖 봇 신호 자동 승률 검증</span>
-                <span class="badge badge-indigo">현재 예약 대기: {pending_cnt}건</span>
-            </div>
+            <div style="font-size:14px; font-weight:800; color:#a5b4fc; margin-bottom:8px;">🤖 봇 신호 자동 승률 검증</div>
             <div style="font-size:11px; color:#94a3b8; text-align:center; padding:20px 0;">
-                아직 검증 완료된 신호가 없습니다.<br>
+                아직 검증할 신호가 없습니다.<br>
                 <span style="font-size:10px;">Tab 2에서 보유 종목을 등록하면 신호가 자동 예약되며, 5/10/20일 뒤 실제 주가로 승률이 산출됩니다.</span>
             </div>
         </div>""")
 
-    # ─── 수동 매매일지 ───
     with st.expander("✍️ 신규 매매일지 기록하기", expanded=False):
         c1, c2, c3, c4 = st.columns(4)
         with c1: j_date = st.text_input("매매일자", value=datetime.now().strftime("%Y-%m-%d"), key="j_dt")
@@ -2409,7 +2369,6 @@ def render_tab_journal(usd_krw):
     win_rate = (len(wins) / len(pnls)) * 100.0 if pnls else 0.0
     profit_factor = (sum(wins) / sum(losses)) if sum(losses) > 0 else (9.99 if sum(wins) > 0 else 0.0)
     tot_col = "#10b981" if total_realized >= 0 else "#f43f5e"
-    tot_realized_str = fmt_usd_signed(total_realized, 2)
 
     render_html(f"""
     <div class="journal-card">
@@ -2420,7 +2379,7 @@ def render_tab_journal(usd_krw):
         <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; text-align:center; font-family:'JetBrains Mono';">
             <div style="background:rgba(0,0,0,.4); padding:10px; border-radius:8px;">
                 <div style="font-size:10px; color:#94a3b8;">누적 실현손익 ($)</div>
-                <div style="font-size:17px; font-weight:800; color:{tot_col};">{tot_realized_str}</div>
+                <div style="font-size:17px; font-weight:800; color:{tot_col};">${total_realized:+,.2f}</div>
             </div>
             <div style="background:rgba(0,0,0,.4); padding:10px; border-radius:8px;">
                 <div style="font-size:10px; color:#94a3b8;">누적 실현손익 (원화)</div>
