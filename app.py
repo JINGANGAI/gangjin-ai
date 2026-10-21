@@ -1,8 +1,9 @@
 # ==============================================================================
-# GANGJIN AI TRADER PRO — App (14)
+# GANGJIN AI TRADER PRO — App (14) (Fix)
 # v13 + 신호 자동 검증(signal_outcomes) 통합
 # - 봇 신호 발생 시 5/10/20일 후 자동으로 실제 주가와 비교해 승률 산출
 # - 사용자 매매일지(trade_journal) + 봇 신호 검증(signal_outcomes) 이중 추적
+# - 수익 계산기 순손익 기호/색상/라벨 동적 수정 완료
 # ==============================================================================
 import streamlit as st
 import yfinance as yf
@@ -147,6 +148,13 @@ def safe_float(val, default: float = 0.0) -> float:
         return default if (np.isnan(f) or np.isinf(f)) else f
     except Exception:
         return default
+
+
+def fmt_usd_signed(val: float, decimals: int = 2) -> str:
+    """음수일 때 $-100.00 대신 -$100.00, 양수일 때 +$100.00 포맷 반환."""
+    v = safe_float(val, 0.0)
+    sign = "+" if v >= 0 else "-"
+    return f"{sign}${abs(v):,.{decimals}f}"
 
 
 def compute_wilder_rsi(close: pd.Series, period: int = 14) -> pd.Series:
@@ -1775,6 +1783,7 @@ def render_tab_analysis(indices, usd_krw):
         </div>
     </div>""")
 
+    # ─── 수익 계산기 (순손익 기호/색상/라벨 동적 수정 완료) ───
     with st.expander("💰 수익 & 분할익절 계산기", expanded=False):
         col_b1, col_b2, col_b3 = st.columns(3)
         with col_b1:
@@ -1791,23 +1800,39 @@ def render_tab_analysis(indices, usd_krw):
             net_usd = (current_usd - invest_usd) - fee_usd
             net_krw = net_usd * usd_krw
             roi_pct = (net_usd / invest_usd) * 100.0
+
             p_color = "text-green" if net_usd >= 0 else "text-red"
+            net_label = "현재 평가순익 (수수료 반영):" if net_usd >= 0 else "현재 평가손실 (수수료 반영):"
+            net_usd_str = fmt_usd_signed(net_usd, 2)
+
             qty_tp1 = int(round(qty * tp1_ratio))
             qty_tp2 = int(round(qty * tp2_ratio))
             qty_hold = max(0, int(qty) - qty_tp1 - qty_tp2)
-            p_tp1 = (target_1 - buy_price) * qty_tp1 * (1 - fee_rate)
-            p_tp2 = (target_2 - buy_price) * qty_tp2 * (1 - fee_rate)
+
+            # 왕복 수수료(매수+매도)를 반영한 1·2차 목표가 도달 시 실제 순손익 계산
+            fee_tp1 = (buy_price + target_1) * qty_tp1 * fee_rate
+            fee_tp2 = (buy_price + target_2) * qty_tp2 * fee_rate
+            p_tp1 = ((target_1 - buy_price) * qty_tp1) - fee_tp1
+            p_tp2 = ((target_2 - buy_price) * qty_tp2) - fee_tp2
+
+            tp1_color = "text-green" if p_tp1 >= 0 else "text-red"
+            tp2_color = "text-green" if p_tp2 >= 0 else "text-red"
+            tp1_tag = "익절" if p_tp1 >= 0 else "손실축소"
+            tp2_tag = "익절" if p_tp2 >= 0 else "손실축소"
+            tp1_str = fmt_usd_signed(p_tp1, 1)
+            tp2_str = fmt_usd_signed(p_tp2, 1)
+
             render_html(f"""
             <div style="background:#0f172a; border:1px solid #1e293b; border-radius:10px; padding:12px; margin-top:8px;">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <span style="font-weight:700; font-size:13px;">순손익:</span>
-                    <span class="{p_color} mono" style="font-size:16px; font-weight:800;">${net_usd:,.2f} ({roi_pct:+.2f}%) / {net_krw:+,.0f}원</span>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                    <span style="font-weight:700; font-size:13px;">{net_label}</span>
+                    <span class="{p_color} mono" style="font-size:16px; font-weight:800;">{net_usd_str} ({roi_pct:+.2f}%) / {net_krw:+,.0f}원</span>
                 </div>
                 <hr style="margin:8px 0;">
                 <div style="font-size:11px; color:#cbd5e1; line-height:1.6;">
-                    • <b>1차 (${target_1:,.2f}):</b> {qty_tp1}주 → <b class="text-green">+${p_tp1:,.1f}</b><br>
-                    • <b>2차 (${target_2:,.2f}):</b> {qty_tp2}주 → <b class="text-green">+${p_tp2:,.1f}</b><br>
-                    • <b>코어:</b> {qty_hold}주 → 트레일링 -{ts_core_pct:.1f}%
+                    • <b>1차 {tp1_tag} (${target_1:,.2f}):</b> {qty_tp1}주 → <b class="{tp1_color} mono">{tp1_str} ({p_tp1*usd_krw:+,.0f}원)</b><br>
+                    • <b>2차 {tp2_tag} (${target_2:,.2f}):</b> {qty_tp2}주 → <b class="{tp2_color} mono">{tp2_str} ({p_tp2*usd_krw:+,.0f}원)</b><br>
+                    • <b>코어 홀딩:</b> {qty_hold}주 → 트레일링 <b>-{ts_core_pct:.1f}%</b>
                 </div>
             </div>""")
             b_save1, b_save2 = st.columns(2)
@@ -1816,11 +1841,12 @@ def render_tab_analysis(indices, usd_krw):
                     db_upsert_holding(ticker, buy_price, qty, 15.0, 7.0)
                     st.success(f"{ticker} 저장 완료!")
             with b_save2:
-                if st.button("📓 매매일지에 기록", use_container_width=True):
-                    db_add_journal_entry(datetime.now().strftime("%Y-%m-%d"), ticker, "익절/청산",
+                j_auto_side = "1차익절" if net_usd >= 0 else "원칙손절"
+                if st.button(f"📓 매매일지에 기록 ({j_auto_side})", use_container_width=True):
+                    db_add_journal_entry(datetime.now().strftime("%Y-%m-%d"), ticker, j_auto_side,
                                          current_price, qty, round(net_usd, 2),
                                          summoned.split("]")[1].strip() if "]" in summoned else "6대 대가",
-                                         "원칙준수", f"평단 ${buy_price:,.2f} → ${current_price:,.2f} ({roi_pct:+.1f}%)")
+                                         "✅ 원칙준수 (냉정)", f"평단 ${buy_price:,.2f} → ${current_price:,.2f} ({roi_pct:+.1f}%)")
                     st.success(f"{ticker} 매매일지 기록 완료!")
 
     col_c1, col_c2, col_c3 = st.columns([1, 1, 1.5])
@@ -1935,6 +1961,7 @@ def render_tab_holdings_monitor(usd_krw):
     calm_cnt = sum(1 for x in eval_list if x['severity'] <= 1)
     total_pnl_usd = sum(x['pnl_usd'] for x in eval_list)
     pnl_color = "#10b981" if total_pnl_usd >= 0 else "#f43f5e"
+    total_pnl_str = fmt_usd_signed(total_pnl_usd, 2)
     cut_candidates = [x['ticker'] for x in eval_list if x['severity'] >= 4]
     tp_candidates = [x['ticker'] for x in eval_list if x['severity'] == 3]
     strong_leaders = [x['ticker'] for x in eval_list if x['signal'] == SIGNAL_HOLD_LONG]
@@ -1952,7 +1979,7 @@ def render_tab_holdings_monitor(usd_krw):
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:6px;">
             <span style="font-size:14px; font-weight:800; color:#c084fc;">🔄 AI 리밸런싱 & 자금 재배치</span>
             <span class="mono" style="font-size:13px; font-weight:800; color:{pnl_color};">
-                총 평가손익: ${total_pnl_usd:+,.2f} ({total_pnl_usd*usd_krw:+,.0f}원)
+                총 평가손익: {total_pnl_str} ({total_pnl_usd*usd_krw:+,.0f}원)
             </span>
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
@@ -2336,6 +2363,7 @@ def render_tab_journal(usd_krw):
     win_rate = (len(wins) / len(pnls)) * 100.0 if pnls else 0.0
     profit_factor = (sum(wins) / sum(losses)) if sum(losses) > 0 else (9.99 if sum(wins) > 0 else 0.0)
     tot_col = "#10b981" if total_realized >= 0 else "#f43f5e"
+    tot_realized_str = fmt_usd_signed(total_realized, 2)
 
     render_html(f"""
     <div class="journal-card">
@@ -2346,7 +2374,7 @@ def render_tab_journal(usd_krw):
         <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; text-align:center; font-family:'JetBrains Mono';">
             <div style="background:rgba(0,0,0,.4); padding:10px; border-radius:8px;">
                 <div style="font-size:10px; color:#94a3b8;">누적 실현손익 ($)</div>
-                <div style="font-size:17px; font-weight:800; color:{tot_col};">${total_realized:+,.2f}</div>
+                <div style="font-size:17px; font-weight:800; color:{tot_col};">{tot_realized_str}</div>
             </div>
             <div style="background:rgba(0,0,0,.4); padding:10px; border-radius:8px;">
                 <div style="font-size:10px; color:#94a3b8;">누적 실현손익 (원화)</div>
