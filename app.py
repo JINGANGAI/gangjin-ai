@@ -1,13 +1,17 @@
 # ==============================================================================
-# GANGJIN AI TRADER PRO — App (16.3 FINAL) — Real-Time Live Sync & Anti-Block Edition
-# - ⭐ 실시간 시세 동기화 엔진 탑재 (전일 종가 지연 표시 버그 완벽 해결):
-#     [1] Yahoo v8 1d/5m meta(regularMarketPrice) + 프리/애프터마켓 실시간 추출
-#     [2] Nasdaq 공식 실시간 API (/api/quote/info primaryData & secondaryData + charting latestIntradayData)
-#     [3] Finnhub Real-Time Quote (/api/v1/quote) + CNBC 실시간 선물/지수 API 연동
-#     [4] 다중 소스 중 '가장 최신 거래일(trade_date)' 시세를 자동 선택하여 일봉 차트(get_history) 마지막 봉에 실시간 병합(Stitching)
-# - ⭐ [16.2] Patch A: 악재 최신성(bad_newest_hours) 반환
-# - ⭐ [16.2] Patch B: Finnhub 필터 후 0건이면 Google News RSS 자동 폴백
-# - ⭐ [16.2] Patch C: 회복 판정을 악재 나이 기반으로 + @st.cache_data 캐시 변이 방지
+# GANGJIN AI TRADER PRO — App (17.0 FINAL) — 12-Agent Control Tower & Behavioral Journal Edition
+# - ⭐ 실시간 시세 동기화 엔진 탑재 (Nasdaq / Yahoo 1d·5m / Finnhub / CNBC 교차 검증 + 일봉 실시간 병합)
+# - ⭐ [16.4] 뉴스 4중 수집 (Finnhub -> Yahoo 공식 RSS -> Google RSS -> Nasdaq News API)
+# - ⭐ [16.4] 전 섹터(방산·우주·AI·반도체·바이오·전기차·크립토·금융·SEC공시) 호재·악재 사전 완비
+# - ⭐ [16.4] 단어 경계(Regex) 정밀 매칭으로 'mission->miss', 'execute->cut', 'award->war' 오탐 원천 차단
+# - ⭐ [16.4] 과거 호재·악재 무조건 선별 패스 (72h 하드 컷오프 + 48h 시그널 컷오프 + 회고성 기사/역행 호재 패스)
+# - ⭐ [16.4] 중대 악재 발생 시 RSI 과매도 역발상(PANIC BUY) 자동 차단 (떨어지는 칼날 진입 방지)
+# - ⭐ [16.5] 실적발표일 6중 정밀 탐지 엔진 (Nasdaq API -> Finnhub -> CNBC -> Yahoo 다중포맷 -> 뉴스PR 추출 -> KNOWN_EARNINGS + 분기주기 자동추정)
+# - ⭐ [16.5-R1] 실시간 봉 병합 로직 안전화 + 뉴스 수집 10분 캐시 분리 + 오탐 방지 문구 정밀화
+# - ⭐ [17.0 NEW] 12개 전문 에이전트 멀티팀 통합 (Data·Chart·Macro·Master·News·Policy·Options·Onchain·Supply·Squeeze·Insider·Institutional)
+# - ⭐ [17.0 NEW] Chief AI Manager (달리오 레짐 가중치 + 소로스 출구 + 튜더존스 200일선 + 드러켄밀러 변동성 사이징 + 8단계 기관급 Veto 거부권)
+# - ⭐ [17.0 NEW] ThreadPoolExecutor 병렬 실행 엔진 탑재 (12개 팀 동시 고속 연산 및 0ms 섹터 사전 매핑으로 체감 지연 제로화)
+# - ⭐ [17.0 NEW] Journal Agent 탑재 (매매일지 8대 잘못된 매매 습관/심리 편향 자동 지적 + 대가 기법별·심리별·종목별 승률 리더보드)
 # ==============================================================================
 import streamlit as st
 import yfinance as yf
@@ -27,6 +31,7 @@ from email.utils import parsedate_to_datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import requests
@@ -54,13 +59,14 @@ except ImportError:
 
 
 # ==============================================================================
-# 1) CONFIG
+# 1) CONFIG (전 섹터 호재·악재 키워드 사전 완비)
 # ==============================================================================
 CFG = {
     "cache": {
         "live_quote": 20, "history": 60, "indices": 30, "top_bar": 30, "market_cap": 3600,
-        "fear_greed": 1800, "macro": 300, "gamma": 1800, "scanner": 120,
-        "noise_filter": 60, "short_interest": 3600, "gex": 1800,
+        "fear_greed": 1800, "macro": 180, "gamma": 1800, "scanner": 120,
+        "noise_filter": 60, "short_interest": 3600, "gex": 1800, "earnings": 1800,
+        "news_candidates": 600, "policy": 600, "options_flow": 1800, "onchain": 180, "supply": 600, "insider": 3600, "institutional": 3600,
     },
     "ind": {
         "rsi_period": 14, "rsi_panic": 25.0, "rsi_oversold": 35.0, "rsi_overbought": 70.0,
@@ -91,30 +97,181 @@ CFG = {
         "vix_crisis": 23.0, "vix_calm": 18.0,
     },
     "news": {
-        "contract": ("contract", "deal", "partnership", "agreement", "award", "hyperscaler",
-                     "alliance", "expansion", "capacity", "customer"),
-        "earnings_bull": ("beat", "record revenue", "surge", "strong guidance", "profit",
-                          "eps beat", "outperform", "upgrade", "buyback"),
-        "bad_strict": ("offering", "dilution", "convertible", "lawsuit", "probe", "subpoena",
-                       "miss", "downgrade", "slash", "halted", "short seller", "fraud",
-                       "cancel", "cancelled", "canceled", "terminate", "terminated",
-                       "suspend", "suspended", "revoke", "revoked", "withdraw", "withdrawn",
-                       "delay", "delayed", "lose", "lost", "loss", "losses", "reject", "rejected",
-                       "fail", "failed", "failure", "bankruptcy", "default", "warning", "cut"),
-        "cut_bullish": ("rate cut", "cuts rate", "cut rates", "interest rate cut",
-                        "price target raised", "dividend", "tax cut"),
-        "cut_bearish": ("guidance cut", "cuts guidance", "dividend cut",
-                        "job cut", "layoff", "production cut", "price target cut"),
-        "geo": ("war", "tariff", "sanction", "inflation", "fed", "rate", "missile",
-                "iran", "china", "ban", "export control"),
+        # ⭐ 1. 확정적 수주·계약·임상승인·인수합병·지수편입 호재 (단독 매칭 시 즉시 호재 인정)
+        "contract_strong": (
+            # 방산·우주·정부조달·일반 대형 수주
+            "contract award", "awarded", "wins contract", "won contract", "secures", "secured",
+            "lands", "selected for", "downselect", "sole source", "sole-source", "task order",
+            "follow-on", "idiq", "program of record", "full-rate production", "ota agreement",
+            "pentagon contract", "dod contract", "navy contract", "air force contract",
+            "army contract", "space force", "darpa", "nasa contract", "doe loan", "chips act",
+            "definitive agreement", "multiyear", "multi-year", "strategic partnership",
+            "strategic alliance", "joint venture", "new contract", "major contract",
+            "new deal", "major deal", "signs deal", "signed deal", "signs agreement",
+            "inks deal", "contract value rises", "contract modification", "ceiling increase",
+            "backlog rises", "record backlog", "successful launch", "faa license", "fcc approval",
+            # AI·반도체·데이터센터·네오클라우드·전력
+            "hyperscaler", "ai deal", "ai cloud", "gpu cluster", "hpc contract", "colocation deal",
+            "hosting agreement", "power purchase agreement", "ppa", "mw expansion", "gw pipeline",
+            "energized", "energizes", "design win", "tape-out", "mass production", "sovereign ai",
+            "ai factory",
+            # 바이오·제약·의료기기 (FDA 승인·임상 성공·기술수출)
+            "fda approval", "fda approves", "fda cleared", "fda clearance", "510(k)",
+            "de novo", "breakthrough therapy", "fast track", "priority review", "orphan drug",
+            "accelerated approval", "positive topline", "met primary endpoint",
+            "meets primary endpoint", "statistically significant", "phase 2 success",
+            "phase 3 success", "positive phase", "ema approval", "licensing deal",
+            "milestone payment", "royalty deal",
+            # 전기차·모빌리티·양자·크립토·M&A·지수편입
+            "fsd approval", "robotaxi", "quantum advantage", "qubit milestone", "hashrate record",
+            "s&p 500 inclusion", "joins s&p 500", "added to s&p", "nasdaq-100 inclusion",
+            "added to nasdaq-100", "russell 1000", "russell 2000 inclusion", "bank charter",
+            "buyout", "takeover", "tender offer", "all-cash deal", "spin-off", "spinoff",
+        ),
+        # ⭐ 조건부 계약 단어 (아래 contract_action_verbs 중 하나와 함께 쓰일 때만 호재로 인정)
+        "contract_context": (
+            "contract", "deal", "partnership", "agreement", "award", "alliance", "expansion", "order", "orders",
+        ),
+        "contract_action_verbs": (
+            "win", "wins", "won", "sign", "signs", "signed", "award", "awards", "awarded",
+            "secure", "secures", "secured", "land", "lands", "ink", "inks", "expand", "expands",
+            "expanded", "extend", "extends", "extended", "renew", "renews", "renewed",
+            "select", "selected", "clinches", "million", "billion",
+        ),
+        # ⭐ 2. 실적·어닝·가이던스 상향·투자의견 상향·자사주매입·내부자매수 호재
+        "earnings_bull": (
+            "beat", "beats", "topped", "tops estimates", "beats estimates", "blowout",
+            "record revenue", "record earnings", "record profit", "record deliveries",
+            "delivery beat", "deliveries beat", "same-store sales beat", "comp sales beat",
+            "record bookings", "surge", "surges", "soars", "strong guidance", "raises guidance",
+            "raised guidance", "hikes guidance", "boosts guidance", "upbeat guidance",
+            "swings to profit", "turns profitable", "margin expansion", "eps beat", "revenue beat",
+            "outperform", "overweight", "upgrade", "upgraded", "upgrades", "initiates with buy",
+            "strong buy", "top pick", "buyback", "repurchase", "accelerated share repurchase",
+            "dividend hike", "raises dividend", "dividend increase", "special dividend",
+            "insider buy", "insider buying", "ceo buys", "cfo buys", "director buys",
+            "cluster buying", "regains compliance", "credit upgrade", "short squeeze",
+        ),
+        # ⭐ 3. 중대 악재 (단 1건만 포착되어도 즉시 위험 경보 & RSI 과매도 역발상 매수 차단!)
+        "bad_severe": (
+            # 계약 해지·중단·취소·분쟁 (방산·우주·정부·수주 산업)
+            "halt", "halts", "halted", "halt purchases", "halts purchases", "halts orders",
+            "stop work", "stop-work", "work stoppage", "cancel", "cancels", "cancelled",
+            "canceled", "cancellation", "terminate", "terminates", "terminated", "termination",
+            "terminated for convenience", "terminated for default", "with prejudice",
+            "scrap", "scraps", "scrapped", "pause", "pauses", "paused",
+            "suspend", "suspends", "suspended", "suspension", "debarment", "debarred",
+            "revoke", "revokes", "revoked", "withdraw", "withdraws", "withdrawn", "withdrawal",
+            "losing a", "loses contract", "lost contract", "contract loss", "customer cancellation",
+            "dispute", "bid protest", "gao protest", "cure notice", "show cause",
+            "navy halts", "army halts", "air force halts", "pentagon cuts", "dod cuts", "doge",
+            "launch failure", "mission failure", "faa grounding", "grounded", "payload lost",
+            # 유상증자·희석·전환사채·내부자 대량매도 (SEC Filings: S-3, Form 144, 424B5, ATM, PIPE)
+            "offering", "public offering", "direct offering", "registered direct",
+            "shelf registration", "s-3", "form s-3", "424b5", "atm offering", "at-the-market",
+            "equity distribution", "equity line", "eloc", "pipe", "private placement",
+            "convertible note", "convertible senior", "convertible debt", "warrant exercise",
+            "inducement", "dilution", "dilutive", "secondary offering", "block trade",
+            "selling shareholders", "reverse split", "reverse stock split",
+            "form 144", "insider sale", "insider selling", "ceo sells", "cfo sells", "files to sell",
+            # 소송·수사·회계부정·상장폐지·파산·공매도 리포트
+            "lawsuit", "class action", "probe", "subpoena", "sec investigation", "sec probe",
+            "sec charges", "doj investigation", "doj probe", "grand jury", "wells notice",
+            "ftc lawsuit", "antitrust lawsuit", "cfpb lawsuit", "fdic consent order",
+            "indictment", "fraud", "accounting irregularities", "whistleblower",
+            "restatement", "restates", "non-reliance", "item 4.02", "material weakness",
+            "going concern", "auditor resigns", "auditor dismissed", "nt 10-k", "nt 10-q",
+            "delayed 10-k", "delayed 10-q", "late filing", "non-compliance", "deficiency notice",
+            "nasdaq notice", "nyse notice", "minimum bid price", "delist", "delisting",
+            "bankruptcy", "chapter 11", "chapter 7", "insolvency", "default", "debt restructuring",
+            "liquidation", "short seller", "short report", "hindenburg", "muddy waters",
+            "citron", "culper", "grizzly research", "fuzzy panda", "kerrisdale", "wolfpack",
+            "scorpion capital", "bleecker street", "spruce point", "hunterbrook",
+            # 바이오·제약 임상실패·FDA 거절
+            "complete response letter", "crl", "clinical hold", "partial clinical hold",
+            "refusal to file", "fda rejects", "fda rejection", "fda denies", "denies approval", "denies motion to dismiss", "motion to dismiss denied", "fda warning letter", "form 483",
+            "boxed warning", "black box warning", "missed primary endpoint", "failed to meet",
+            "fails to meet", "did not meet primary endpoint", "trial failure", "phase 2 failure",
+            "phase 3 failure", "discontinues trial", "terminates trial", "halted trial",
+            "serious adverse", "patient death", "safety signal",
+            # 수출통제·해킹·가동중단·주가 폭락·신저가
+            "export ban", "chip ban", "entity list", "ransomware", "data breach", "exchange hack",
+            "factory shutdown", "production halt", "mass recall", "nhtsa probe",
+            "crash", "crashes", "crashed", "plunge", "plunges", "plunged", "plummet", "plummets",
+            "52-week low", "all-time low", "record low",
+        ),
+        # ⭐ 4. 일반 악재 (어닝 미스, 가이던스 하향, 투자의견 하향, 감원, 지연, 리콜 등)
+        "bad_strict": (
+            "miss", "misses", "missed", "revenue miss", "eps miss", "delivery miss",
+            "deliveries fell", "deliveries drop", "comp sales miss", "shortfall",
+            "weak guidance", "soft guidance", "lowers guidance", "lowered guidance",
+            "slashes guidance", "withdraws guidance", "downbeat guidance",
+            "downgrade", "downgrades", "downgraded", "underperform", "underweight", "sell rating",
+            "credit downgrade", "junk status", "slash", "slashes", "slashed",
+            "delay", "delays", "delayed", "tape-out delay", "rack delay", "datacenter delay",
+            "yield issue", "overheating", "design flaw", "lose", "loses", "lost",
+            "loss", "losses", "widening loss", "net loss widens", "margin compression",
+            "rising delinquencies", "charge-offs", "deposit outflow", "inventory glut",
+            "reject", "rejects", "rejected", "fail", "fails", "failed", "failure",
+            "warning", "warns", "profit warning", "headwind", "headwinds",
+            "slump", "slumps", "tumble", "tumbles", "sink", "sinks", "slide", "slides",
+            "recall", "cyberattack", "cloud outage", "service outage",
+            "strike", "union strike", "walkout", "boycott", "fine", "penalty",
+        ),
+        "cut_bullish": (
+            "rate cut", "cuts rate", "cut rates", "interest rate cut", "fed cut",
+            "price target raised", "raises price target", "hikes price target", "boosts price target",
+            "tax cut", "cuts loss", "narrowed loss",
+        ),
+        "cut_bearish": (
+            "guidance cut", "cuts guidance", "cut guidance", "dividend cut", "cuts dividend",
+            "dividend suspension", "suspends dividend", "job cut", "job cuts", "layoff", "layoffs",
+            "workforce reduction", "headcount reduction", "production cut", "cuts production",
+            "capex cut", "price target cut", "cuts price target", "lowered price target",
+            "lowers price target", "order cut", "cuts orders", "budget cut", "funding cut",
+            "backlog cut", "supply cut",
+        ),
+        # ⭐ 5. [16.5-R1] 오탐 방지("denies" 단독 매칭을 정밀 구문으로 교체하여 'FDA denies' 오탐 차단)
+        "bad_false_positive": (
+            "no orders were stopped", "no orders were canceled", "no orders were cancelled",
+            "not cancel", "did not cancel",
+            "denies report", "denies rumor", "denies rumors", "denies wrongdoing",
+            "denies allegations", "denies sec probe", "denies investigation", "denies claims",
+            "denies injunction", "denies preliminary injunction", "injunction denied",
+            "denies class action", "denies class certification", "denies bid protest",
+            "reaffirms", "reaffirmed",
+            "continued investment", "continued u.s. navy investment", "resumes work",
+            "resumes trading", "lifts halt", "lifts suspension", "lifts clinical hold",
+            "dismisses lawsuit", "lawsuit dismissed", "settles lawsuit", "probe closed",
+            "investigation closed", "no dilution", "no offering", "non-dilutive",
+            "unstoppable", "non-stop", "one-stop", "narrowed loss", "cuts loss", "beats loss",
+            "smaller-than-expected loss", "without delay", "zero default",
+        ),
+        # ⭐ 6. 과거 회고성/클릭베이트 스팸 기사 필터 (오늘 날짜로 재발행되어도 즉시 패스)
+        "retrospective_skip": (
+            "if you invested", "years ago", "months ago", "last month", "last quarter",
+            "last year", "in 2022", "in 2023", "in 2024", "in 2025",
+            "why .* dropped last", "what happened last", "here's why .* fell in",
+            "looking back at", "how much you would have",
+        ),
+        # ⭐ 7. 거시·지정학 키워드 ('war'->'award', 'ban'->'bank', 'rate'->'operating' 오탐 방지)
+        "geo": (
+            "war", "wars", "warfare", "tariff", "tariffs", "sanction", "sanctions",
+            "inflation", "stagflation", "fomc", "federal reserve", "powell", "rate hike",
+            "interest rate", "cpi", "pce", "missile", "iran", "china", "taiwan",
+            "export control", "trade war", "geopolitical", "middle east",
+        ),
+        # ⭐ 8. 과거 호재·악재 선별 패스 기준 시간(시간)
         "recency_hours": {
-            "fresh": 24.0, "recent": 48.0, "this_week": 72.0,
-            "five_days": 120.0, "seven_days": 168.0,
+            "breaking": 12.0,    # 12시간 이내: 초신선 속보 (가중치 1.15)
+            "fresh": 24.0,       # 24시간 이내: 당일 핵심 재료 (가중치 1.00)
+            "recent": 48.0,      # 48시간 이내: 유효 단기 재료 (가중치 0.75)
+            "stale_pass": 72.0,  # 48~72시간: 과거 재료 → 점수/건수 무조건 패스(0.0), 목록에만 참고 표시
         },
         "bad_recent_threshold": 0.7,
         "recovery_pct_forgive": 3.0,
         "recovery_bonus": 6,
-        "recovery_min_age_hours": 24.0,   # ⭐ Patch C: 회복 보정 최소 악재 나이 (24시간 경과 후)
+        "recovery_min_age_hours": 24.0,
     },
     "noise": {
         "minor_atr_mult": 1.35, "band_atr_mult": 1.8, "chandelier_atr": 2.8,
@@ -128,6 +285,46 @@ CFG = {
     },
     "paths": {"db": "data/portfolio.db", "logs": "data/logs"},
     "usd_krw_fallback": 1380.0,
+    # ⭐ [16.5] 야후/외부 API 조회 실패 대비 주요 종목 실적 발표일 수동 보정 사전 (2025~2027 분기별 일정)
+    "known_earnings": {
+        "IREN":  ["2025-02-12", "2025-05-14", "2025-08-28", "2025-11-06", "2026-02-05", "2026-05-07", "2026-08-26", "2026-11-05", "2027-02-10"],
+        "NVDA":  ["2025-02-26", "2025-05-28", "2025-08-27", "2025-11-19", "2026-02-25", "2026-05-27", "2026-08-26", "2026-11-18", "2027-02-24"],
+        "TSLA":  ["2025-01-29", "2025-04-22", "2025-07-23", "2025-10-22", "2026-01-28", "2026-04-21", "2026-07-22", "2026-10-21", "2027-01-27"],
+        "PLTR":  ["2025-02-03", "2025-05-05", "2025-08-04", "2025-11-03", "2026-02-02", "2026-05-04", "2026-08-03", "2026-11-02", "2027-02-01"],
+        "MSTR":  ["2025-02-05", "2025-05-01", "2025-07-31", "2025-10-30", "2026-02-04", "2026-04-30", "2026-08-04", "2026-10-29", "2027-02-03"],
+        "IONQ":  ["2025-02-26", "2025-05-07", "2025-08-06", "2025-11-05", "2026-02-25", "2026-05-06", "2026-08-05", "2026-11-04", "2027-02-24"],
+        "AAPL":  ["2025-01-30", "2025-05-01", "2025-07-31", "2025-10-30", "2026-01-29", "2026-04-30", "2026-07-30", "2026-10-29", "2027-01-28"],
+        "MSFT":  ["2025-01-29", "2025-04-30", "2025-07-29", "2025-10-28", "2026-01-28", "2026-04-29", "2026-07-28", "2026-10-27", "2027-01-27"],
+        "AMZN":  ["2025-02-06", "2025-05-01", "2025-08-06", "2025-10-30", "2026-02-05", "2026-04-30", "2026-08-05", "2026-10-29", "2027-02-04"],
+        "GOOGL": ["2025-02-04", "2025-04-24", "2025-07-22", "2025-10-28", "2026-02-03", "2026-04-28", "2026-07-28", "2026-10-27", "2027-02-02"],
+        "META":  ["2025-01-29", "2025-04-30", "2025-07-30", "2025-10-29", "2026-01-28", "2026-04-29", "2026-07-29", "2026-10-28", "2027-01-27"],
+        "AMD":   ["2025-02-04", "2025-05-06", "2025-08-05", "2025-11-04", "2026-02-03", "2026-05-05", "2026-08-04", "2026-11-03", "2027-02-02"],
+        "AVGO":  ["2025-03-06", "2025-06-05", "2025-09-04", "2025-12-11", "2026-03-05", "2026-06-10", "2026-09-03", "2026-12-10", "2027-03-04"],
+        "SMCI":  ["2025-02-11", "2025-05-06", "2025-08-05", "2025-11-04", "2026-02-10", "2026-05-05", "2026-08-04", "2026-11-03", "2027-02-09"],
+        "ARM":   ["2025-02-05", "2025-05-07", "2025-07-30", "2025-11-05", "2026-02-04", "2026-05-06", "2026-07-29", "2026-11-04", "2027-02-03"],
+        "TSM":   ["2025-01-16", "2025-04-17", "2025-07-17", "2025-10-16", "2026-01-15", "2026-04-16", "2026-07-16", "2026-10-15", "2027-01-14"],
+        "MU":    ["2025-03-20", "2025-06-25", "2025-09-24", "2025-12-17", "2026-03-18", "2026-06-24", "2026-09-23", "2026-12-16", "2027-03-17"],
+        "INTC":  ["2025-01-30", "2025-04-24", "2025-07-31", "2025-10-29", "2026-01-29", "2026-04-23", "2026-07-30", "2026-10-29", "2027-01-28"],
+        "COIN":  ["2025-02-13", "2025-05-08", "2025-08-07", "2025-11-06", "2026-02-12", "2026-05-07", "2026-08-06", "2026-11-05", "2027-02-11"],
+        "MARA":  ["2025-02-26", "2025-05-08", "2025-08-06", "2025-11-05", "2026-02-25", "2026-05-07", "2026-08-05", "2026-11-04", "2027-02-24"],
+        "RIOT":  ["2025-02-24", "2025-05-01", "2025-07-31", "2025-10-30", "2026-02-23", "2026-05-04", "2026-08-03", "2026-11-02", "2027-02-22"],
+        "CLSK":  ["2025-02-06", "2025-05-08", "2025-08-07", "2025-11-20", "2026-02-05", "2026-05-07", "2026-08-06", "2026-11-19", "2027-02-04"],
+        "RKLB":  ["2025-02-27", "2025-05-08", "2025-08-07", "2025-11-10", "2026-02-26", "2026-05-07", "2026-08-06", "2026-11-09", "2027-02-25"],
+        "ASTS":  ["2025-03-03", "2025-05-14", "2025-08-14", "2025-11-13", "2026-03-02", "2026-05-13", "2026-08-13", "2026-11-12", "2027-03-01"],
+        "LUNR":  ["2025-03-24", "2025-05-13", "2025-08-12", "2025-11-11", "2026-03-19", "2026-05-12", "2026-08-11", "2026-11-10", "2027-03-18"],
+        "SOFI":  ["2025-01-27", "2025-04-29", "2025-07-29", "2025-10-28", "2026-01-26", "2026-04-28", "2026-07-28", "2026-10-27", "2027-01-25"],
+        "HOOD":  ["2025-02-12", "2025-05-07", "2025-08-06", "2025-11-05", "2026-02-11", "2026-05-06", "2026-08-05", "2026-11-04", "2027-02-10"],
+        "NFLX":  ["2025-01-21", "2025-04-17", "2025-07-17", "2025-10-21", "2026-01-20", "2026-04-16", "2026-07-16", "2026-10-20", "2027-01-19"],
+        "CRWD":  ["2025-03-04", "2025-06-03", "2025-08-27", "2025-11-25", "2026-03-03", "2026-06-02", "2026-08-26", "2026-11-24", "2027-03-02"],
+        "PANW":  ["2025-02-13", "2025-05-20", "2025-08-18", "2025-11-19", "2026-02-17", "2026-05-19", "2026-08-17", "2026-11-18", "2027-02-16"],
+        "SNOW":  ["2025-02-26", "2025-05-21", "2025-08-20", "2025-11-19", "2026-02-25", "2026-05-20", "2026-08-26", "2026-11-18", "2027-02-24"],
+        "LLY":   ["2025-02-06", "2025-05-01", "2025-08-07", "2025-10-30", "2026-02-05", "2026-04-30", "2026-08-06", "2026-10-29", "2027-02-04"],
+        "UNH":   ["2025-01-16", "2025-04-17", "2025-07-15", "2025-10-14", "2026-01-15", "2026-04-16", "2026-07-16", "2026-10-15", "2027-01-14"],
+        "ORCL":  ["2025-03-10", "2025-06-11", "2025-09-09", "2025-12-08", "2026-03-09", "2026-06-10", "2026-09-08", "2026-12-07", "2027-03-08"],
+        "HIMS":  ["2025-02-24", "2025-05-05", "2025-08-04", "2025-11-03", "2026-02-23", "2026-05-04", "2026-08-03", "2026-11-02", "2027-02-22"],
+        "RDDT":  ["2025-02-12", "2025-05-01", "2025-08-05", "2025-10-28", "2026-02-11", "2026-05-05", "2026-08-04", "2026-10-27", "2027-02-10"],
+        "APP":   ["2025-02-12", "2025-05-07", "2025-08-06", "2025-11-05", "2026-02-11", "2026-05-06", "2026-08-05", "2026-11-04", "2027-02-10"],
+    },
 }
 
 Path(CFG["paths"]["logs"]).mkdir(parents=True, exist_ok=True)
@@ -210,6 +407,133 @@ def _ny_today_str() -> str:
         return datetime.utcnow().strftime("%Y-%m-%d")
 
 
+def _ny_today_date():
+    """미국 동부(뉴욕) 기준 오늘 날짜(date) 반환 — 한국 시간(+9h) 시차로 인한 D-Day 누락 방지."""
+    try:
+        return pd.Timestamp.now(tz="America/New_York").date()
+    except Exception:
+        return datetime.utcnow().date()
+
+
+_MONTH_MAP = {
+    "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
+    "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6,
+    "jul": 7, "july": 7, "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9,
+    "oct": 10, "october": 10, "nov": 11, "november": 11, "dec": 12, "december": 12,
+}
+
+
+def _extract_dates_from_any(val, ref_today=None) -> list:
+    """
+    다양한 포맷(date, datetime, Timestamp, Unix epoch, list, DataFrame/Series,
+    '2026-05-07', '05/07/2026', 'May 7, 2026', 'May 7' 등)에서 datetime.date 리스트 추출.
+    """
+    if ref_today is None:
+        ref_today = _ny_today_date()
+    out = []
+    if val is None:
+        return out
+    if isinstance(val, (list, tuple, set)):
+        for item in val:
+            out.extend(_extract_dates_from_any(item, ref_today))
+        return out
+    if isinstance(val, (pd.Series, pd.Index, np.ndarray)):
+        for item in list(val):
+            out.extend(_extract_dates_from_any(item, ref_today))
+        return out
+    if isinstance(val, pd.DataFrame):
+        for col in val.columns:
+            out.extend(_extract_dates_from_any(val[col], ref_today))
+        for idx_v in val.index:
+            out.extend(_extract_dates_from_any(idx_v, ref_today))
+        return out
+    if isinstance(val, dict):
+        for v in val.values():
+            out.extend(_extract_dates_from_any(v, ref_today))
+        return out
+    if isinstance(val, pd.Timestamp):
+        if pd.isna(val):
+            return out
+        try:
+            if val.tzinfo is not None:
+                return [val.tz_convert("America/New_York").date()]
+            return [val.date()]
+        except Exception:
+            return out
+    if isinstance(val, datetime):
+        return [val.date()]
+    if hasattr(val, "year") and hasattr(val, "month") and hasattr(val, "day") and not isinstance(val, datetime):
+        try:
+            return [datetime(int(val.year), int(val.month), int(val.day)).date()]
+        except Exception:
+            return out
+    if isinstance(val, (int, float, np.number)):
+        fv = float(val)
+        if 1e9 <= fv <= 3e9:
+            try:
+                return [pd.to_datetime(int(fv), unit="s", utc=True).tz_convert("America/New_York").date()]
+            except Exception:
+                return out
+        if 1e12 <= fv <= 3e12:
+            try:
+                return [pd.to_datetime(int(fv // 1000), unit="s", utc=True).tz_convert("America/New_York").date()]
+            except Exception:
+                return out
+        return out
+
+    s = str(val).strip()
+    if not s or s.lower() in ("n/a", "none", "null", "nan", "nat", "-", "tbd", "--"):
+        return out
+
+    # 1) YYYY-MM-DD or YYYY/MM/DD
+    for m in re.finditer(r"\b(20\d{2})[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12]\d|3[01])\b", s):
+        try:
+            out.append(datetime(int(m.group(1)), int(m.group(2)), int(m.group(3))).date())
+        except Exception:
+            pass
+
+    # 2) MM/DD/YYYY
+    for m in re.finditer(r"\b(0?[1-9]|1[0-2])/(0?[1-9]|[12]\d|3[01])/(20\d{2})\b", s):
+        try:
+            out.append(datetime(int(m.group(3)), int(m.group(1)), int(m.group(2))).date())
+        except Exception:
+            pass
+
+    # 3) Month DD, YYYY (예: May 7, 2026 / Nov. 06, 2025 / February 25 2026)
+    for m in re.finditer(
+        r"\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?(?:,?\s+(20\d{2}))?\b",
+        s,
+        flags=re.IGNORECASE,
+    ):
+        mon_str = m.group(1).lower().rstrip(".")
+        mon = _MONTH_MAP.get(mon_str[:3], 0)
+        day = int(m.group(2))
+        yr_str = m.group(3)
+        if mon > 0:
+            try:
+                if yr_str:
+                    out.append(datetime(int(yr_str), mon, day).date())
+                else:
+                    cand_d = datetime(ref_today.year, mon, day).date()
+                    if (cand_d - ref_today).days < -60:
+                        cand_d = datetime(ref_today.year + 1, mon, day).date()
+                    out.append(cand_d)
+            except Exception:
+                pass
+
+    return out
+
+
+def _detect_tod_label(text: str) -> str:
+    """실적 발표 시간대(장전 BMO / 장후 AMC) 태그 감지."""
+    tl = str(text or "").lower()
+    if any(k in tl for k in ("bmo", "before market", "pre-market", "premarket", "before open", "time-pre-market")):
+        return " · 장전(BMO)"
+    if any(k in tl for k in ("amc", "after market", "after-hours", "after hours", "after close", "time-after-hours")):
+        return " · 장후(AMC)"
+    return "" 
+
+
 def _ts_to_ny_date_str(ts_val) -> str:
     try:
         return pd.to_datetime(int(ts_val), unit="s", utc=True).tz_convert("America/New_York").strftime("%Y-%m-%d")
@@ -225,29 +549,8 @@ def compute_wilder_rsi(close: pd.Series, period: int = 14) -> pd.Series:
     return (100.0 - 100.0 / (1.0 + rs)).fillna(50.0)
 
 
-def _recency_weight(pub_dt) -> float:
-    """뉴스 발행시각 → 0~1 가중치. 7일 이상은 0.0 (완전 무시)."""
-    if pub_dt is None:
-        return 0.4
-    try:
-        if pub_dt.tzinfo is not None:
-            now = datetime.now(pub_dt.tzinfo)
-        else:
-            now = datetime.now()
-        hours = max(0.0, (now - pub_dt).total_seconds() / 3600.0)
-    except Exception:
-        return 0.4
-    rcfg = CFG["news"]["recency_hours"]
-    if hours <= rcfg["fresh"]:       return 1.0
-    if hours <= rcfg["recent"]:      return 0.7
-    if hours <= rcfg["this_week"]:   return 0.45
-    if hours <= rcfg["five_days"]:   return 0.25
-    if hours <= rcfg["seven_days"]:  return 0.10
-    return 0.0
-
-
 def _hours_since(pub_dt) -> float:
-    """뉴스 발행시각으로부터 경과 시간(시간). 파싱 실패 시 큰 값."""
+    """뉴스 발행시각으로부터 경과 시간(시간). 파싱 실패 시 9999.0 반환하여 과거 기사로 패스 처리."""
     if pub_dt is None:
         return 9999.0
     try:
@@ -260,10 +563,79 @@ def _hours_since(pub_dt) -> float:
         return 9999.0
 
 
+def _recency_weight(pub_dt) -> float:
+    """
+    ⭐ [16.4] 과거 호재·악재 무조건 선별 패스 가중치:
+    - 날짜 미상(None) 또는 48시간 초과: 점수 가중치 0.0 (시그널 산정에서 무조건 패스!)
+    - 12시간 이내 속보: 1.15
+    - 24시간 이내 당일: 1.00
+    - 48시간 이내 최근: 0.75
+    """
+    hours = _hours_since(pub_dt)
+    rcfg = CFG["news"]["recency_hours"]
+    if hours <= rcfg["breaking"]:
+        return 1.15
+    if hours <= rcfg["fresh"]:
+        return 1.00
+    if hours <= rcfg["recent"]:
+        return 0.75
+    return 0.0
+
+
 def _normalize_title(t: str) -> str:
-    """중복 기사 판별용 정규화 — 소문자, 특수문자 제거, 앞 8단어."""
-    t = re.sub(r'[^a-z0-9가-힣 ]', ' ', (t or '').lower())
-    return " ".join(t.split()[:8])
+    """중복 기사 판별용 정규화 — 언론사 접미사 제거 후 소문자·숫자 앞 8단어."""
+    raw = str(t or "")
+    if " - " in raw:
+        raw = raw.rsplit(" - ", 1)[0]
+    raw = re.sub(r'[^a-z0-9가-힣 ]', ' ', raw.lower())
+    return " ".join(raw.split()[:8])
+
+
+def _kw_match(text_lower: str, kw: str) -> bool:
+    """
+    ⭐ [16.4] 정밀 경계 매칭:
+    - 'miss'가 'mission'/'commission'에 매칭되거나,
+    - 'cut'이 'execute'/'executive'에 매칭되거나,
+    - 'war'가 'award'/'software'에 매칭되거나,
+    - 's-3'가 'class-3'에 매칭되는 오탐을 원천 차단합니다.
+    """
+    k = kw.lower().strip()
+    if not k:
+        return False
+    return bool(re.search(rf"(?<![a-z0-9]){re.escape(k)}(?![a-z0-9])", text_lower))
+
+
+def _any_kw(text_lower: str, kw_tuple: tuple) -> bool:
+    return any(_kw_match(text_lower, k) for k in kw_tuple)
+
+
+def _parse_relative_or_date(ago_str: str, created_str: str):
+    """Nasdaq News 등의 '3 hours ago', '25 mins ago', 'Oct 21, 2026' 문자열을 datetime으로 변환."""
+    now = datetime.now()
+    s_ago = str(ago_str or "").lower().strip()
+    if s_ago:
+        m = re.search(r"(\d+)\s*(sec|min|hour|hr|day|wk|week|month|yr|year)", s_ago)
+        if m:
+            val = int(m.group(1))
+            unit = m.group(2)
+            if unit.startswith("sec"):
+                return now - timedelta(seconds=val)
+            if unit.startswith("min"):
+                return now - timedelta(minutes=val)
+            if unit in ("hour", "hr"):
+                return now - timedelta(hours=val)
+            if unit == "day":
+                return now - timedelta(days=val)
+            if unit in ("wk", "week"):
+                return now - timedelta(days=val * 7)
+            return now - timedelta(days=365)
+    s_cr = str(created_str or "").strip()
+    if s_cr:
+        try:
+            return pd.to_datetime(s_cr).to_pydatetime()
+        except Exception:
+            pass
+    return None
 
 
 SIGNAL_HOLD_LONG   = "🟢 장기 홀딩"
@@ -317,6 +689,7 @@ div[data-baseweb="select"] > div { background-color: #0f1523 !important; border-
 .journal-card { background: linear-gradient(135deg,#0f2416,#0a131a 50%,#0f2416); border: 1px solid #10b981; padding: 16px 20px; border-radius: 14px; margin-bottom: 14px; box-shadow: 0 4px 20px rgba(16,185,129,.15); }
 .squeeze-card { background: linear-gradient(135deg,#1a1108,#0d1526 50%,#1a1108); border: 2px solid #f97316; padding: 16px 20px; border-radius: 14px; margin-bottom: 14px; box-shadow: 0 4px 25px rgba(249,115,22,.25); }
 .signal-card { background: linear-gradient(135deg,#0f172a,#1a1f35 50%,#0f172a); border: 1px solid #6366f1; padding: 16px 20px; border-radius: 14px; margin-bottom: 14px; box-shadow: 0 4px 20px rgba(99,102,241,.2); }
+.chief-card { background: linear-gradient(135deg,#0b1528,#141e33 55%,#1a1230); border: 2px solid #38bdf8; padding: 18px 20px; border-radius: 16px; margin-bottom: 16px; box-shadow: 0 8px 30px rgba(56,189,248,.18); }
 .index-wrapper { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .index-card { flex: 1 1 100px; background-color: #0d131f; border: 1px solid #1e293b; padding: 10px 8px; border-radius: 10px; text-align: center; }
 .index-name { color: #94a3b8; font-size: 10px; font-weight: 600; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -414,6 +787,34 @@ setInterval(updateNYClock,1000);updateNYClock();
 # ==============================================================================
 # 6) REAL-TIME QUOTE & MULTI-SOURCE DATA ENGINE (전일 종가 지연 방지 + 5중 폴백)
 # ==============================================================================
+def _detect_ext_session_label(ts_str: str = "") -> str:
+    """타임스탬프 문자열 및 현재 뉴욕(ET) 시간대를 기반으로 프리마켓/애프터마켓 라벨을 자동 판정."""
+    s = str(ts_str or "").upper().strip()
+    if any(k in s for k in ("PRE-MARKET", "PREMARKET", "PRE MARKET", "BEFORE")):
+        return "프리마켓"
+    if any(k in s for k in ("AFTER-HOURS", "AFTER HOURS", "AFTERHOURS", "POST-MARKET", "POSTMARKET", "AFTER")):
+        return "애프터마켓"
+    m_tm = re.search(r"\b(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)\b", s)
+    if m_tm:
+        hh = int(m_tm.group(1)) % 12
+        mm = int(m_tm.group(2))
+        if m_tm.group(3) == "PM":
+            hh += 12
+        hm = hh * 60 + mm
+        if 240 <= hm < 570:
+            return "프리마켓"
+        if hm >= 960 or hm < 240:
+            return "애프터마켓"
+    try:
+        ny_now = pd.Timestamp.now(tz="America/New_York")
+        hm_now = ny_now.hour * 60 + ny_now.minute
+        if 240 <= hm_now < 570:
+            return "프리마켓"
+    except Exception:
+        pass
+    return "애프터마켓"
+
+
 def _period_to_days(period: str) -> int:
     p = (period or "1y").lower().strip()
     if p == "2d": return 5
@@ -451,6 +852,24 @@ def _parse_nasdaq_date(ts_str: str) -> str:
     return ""
 
 
+def _clean_company_search_name(raw_name: str, ticker: str) -> str:
+    """'AEVEX Corp. Common Stock' -> 'AEVEX' 추출 (뉴스 검색 정밀도 향상용)."""
+    if not raw_name:
+        return ""
+    s = re.sub(
+        r"\b(common stock|ordinary shares|american depositary shares|ads|adr|class [a-c]|inc\.?|corp\.?|corporation|ltd\.?|limited|plc|holdings?|group|technologies|technology|company|co\.?)\b",
+        " ",
+        str(raw_name),
+        flags=re.IGNORECASE,
+    )
+    s = re.sub(r"[^A-Za-z0-9 ]", " ", s).strip()
+    words = [w for w in s.split() if len(w) >= 3]
+    if not words:
+        return ""
+    cand = " ".join(words[:2]).strip()
+    return "" if cand.upper() == ticker.upper() else cand
+
+
 def _quote_from_yahoo_v8(ticker: str) -> dict:
     """Yahoo v8 1d/5m + 5d/1d meta.regularMarketPrice 기반 실시간 시세 및 프리/애프터마켓 추출."""
     enc = urllib.parse.quote(ticker.strip().upper())
@@ -475,6 +894,9 @@ def _quote_from_yahoo_v8(ticker: str) -> dict:
             day_l = safe_float(meta.get("regularMarketDayLow"), reg_px)
             day_o = safe_float(meta.get("regularMarketOpen"), 0.0)
             day_v = safe_float(meta.get("regularMarketVolume"), 0.0)
+            comp_name = _clean_company_search_name(
+                meta.get("shortName") or meta.get("longName") or "", ticker
+            )
 
             ts_list = res.get("timestamp") or []
             q = ((res.get("indicators") or {}).get("quote") or [None])[0] or {}
@@ -503,18 +925,28 @@ def _quote_from_yahoo_v8(ticker: str) -> dict:
                             day_v = safe_float(reg_df["Volume"].sum(), 0.0)
                     last_bar_ts = day_df.index[-1]
                     last_bar_px = safe_float(day_df["Close"].iloc[-1], 0.0)
+                    last_bar_date = last_bar_ts.strftime("%Y-%m-%d")
                     hm = last_bar_ts.hour * 60 + last_bar_ts.minute
-                    if last_bar_px > 0 and not any(c in ticker for c in ("^", "=", "-")):
-                        if hm >= 960 and abs(last_bar_px - reg_px) > 1e-4:
-                            ext_price = last_bar_px
-                            ext_chg = ext_price - reg_px
-                            ext_chg_pct = (ext_chg / reg_px) * 100.0 if reg_px > 0 else 0.0
-                            ext_label = "애프터마켓"
-                        elif 240 <= hm < 570 and abs(last_bar_px - reg_px) > 1e-4:
-                            ext_price = last_bar_px
-                            ext_chg = ext_price - reg_px
-                            ext_chg_pct = (ext_chg / reg_px) * 100.0 if reg_px > 0 else 0.0
-                            ext_label = "프리마켓"
+                    if (
+                        last_bar_px > 0
+                        and reg_px > 0
+                        and last_bar_date == trade_date
+                        and not any(c in ticker for c in ("^", "=", "-"))
+                    ):
+                        cand_chg = last_bar_px - reg_px
+                        cand_pct = (cand_chg / reg_px) * 100.0
+                        # ⭐ 장외 유령 가격 필터링 (정규장 종가 대비 ±15% 이내 정상 틱만 인정)
+                        if abs(cand_chg) > 1e-4 and abs(cand_pct) <= 15.0:
+                            if hm >= 960:
+                                ext_price = last_bar_px
+                                ext_chg = cand_chg
+                                ext_chg_pct = cand_pct
+                                ext_label = "애프터마켓"
+                            elif 240 <= hm < 570:
+                                ext_price = last_bar_px
+                                ext_chg = cand_chg
+                                ext_chg_pct = cand_pct
+                                ext_label = "프리마켓"
 
             if prev_cl <= 0 or abs(prev_cl - reg_px) < 1e-6:
                 try:
@@ -545,6 +977,7 @@ def _quote_from_yahoo_v8(ticker: str) -> dict:
                 "volume": day_v, "trade_date": trade_date,
                 "ext_price": ext_price, "ext_change": ext_chg,
                 "ext_change_pct": ext_chg_pct, "ext_label": ext_label,
+                "company_name": comp_name,
                 "source": "Yahoo Real-Time",
             }
         except Exception as e:
@@ -575,6 +1008,7 @@ def _quote_from_nasdaq(ticker: str) -> dict:
             px = safe_float(prim.get("lastSalePrice"), 0.0)
             if px <= 0:
                 continue
+            comp_name = _clean_company_search_name(data.get("companyName") or "", t)
             net_chg = safe_float(prim.get("netChange"), 0.0)
             delta_ind = str(prim.get("deltaIndicator") or "").lower()
             if delta_ind == "down" and net_chg > 0:
@@ -602,18 +1036,17 @@ def _quote_from_nasdaq(ticker: str) -> dict:
             ext_price, ext_chg, ext_chg_pct, ext_label = 0.0, 0.0, 0.0, ""
             if isinstance(sec, dict) and sec.get("lastSalePrice"):
                 ep = safe_float(sec.get("lastSalePrice"), 0.0)
-                if ep > 0 and abs(ep - px) > 1e-4:
-                    ext_price = ep
-                    ec = safe_float(sec.get("netChange"), ep - px)
-                    s_ind = str(sec.get("deltaIndicator") or "").lower()
-                    if s_ind == "down" and ec > 0:
-                        ec = -ec
-                    ext_chg = ec
-                    ext_chg_pct = safe_float(sec.get("percentageChange"), (ec / px) * 100.0 if px > 0 else 0.0)
-                    if ext_chg < 0 and ext_chg_pct > 0:
-                        ext_chg_pct = -ext_chg_pct
-                    sec_ts = str(sec.get("lastTradeTimestamp") or "").upper()
-                    ext_label = "프리마켓" if "PRE" in sec_ts or "AM" in sec_ts else "애프터마켓"
+                sec_ts = str(sec.get("lastTradeTimestamp") or "")
+                sec_date = _parse_nasdaq_date(sec_ts)
+                # ⭐ 당일 장외 데이터인지 확인 + 정규장 종가(px) 기준 netChange 직접 재계산 + ±15% 컷오프
+                if ep > 0 and px > 0 and abs(ep - px) > 1e-4 and (not sec_date or sec_date == trade_date):
+                    ec = ep - px
+                    ec_pct = (ec / px) * 100.0
+                    if abs(ec_pct) <= 15.0:
+                        ext_price = ep
+                        ext_chg = ec
+                        ext_chg_pct = ec_pct
+                        ext_label = _detect_ext_session_label(sec_ts)
 
             return {
                 "price": px, "prev_close": prev_cl, "change": net_chg, "change_pct": chg_pct,
@@ -621,6 +1054,7 @@ def _quote_from_nasdaq(ticker: str) -> dict:
                 "volume": vol, "trade_date": trade_date,
                 "ext_price": ext_price, "ext_change": ext_chg,
                 "ext_change_pct": ext_chg_pct, "ext_label": ext_label,
+                "company_name": comp_name,
                 "source": "Nasdaq Real-Time",
             }
         except Exception as e:
@@ -654,6 +1088,7 @@ def _quote_from_finnhub(ticker: str) -> dict:
                     "low": min(safe_float(j.get("l"), px) or px, px),
                     "volume": 0.0, "trade_date": trade_date,
                     "ext_price": 0.0, "ext_change": 0.0, "ext_change_pct": 0.0, "ext_label": "",
+                    "company_name": "",
                     "source": "Finnhub Real-Time",
                 }
     except Exception as e:
@@ -696,6 +1131,7 @@ def _quote_from_cnbc(ticker: str) -> dict:
                     "volume": safe_float(qq.get("volume"), 0.0),
                     "trade_date": trade_date,
                     "ext_price": 0.0, "ext_change": 0.0, "ext_change_pct": 0.0, "ext_label": "",
+                    "company_name": _clean_company_search_name(qq.get("name") or "", t),
                     "source": "CNBC Real-Time",
                 }
     except Exception as e:
@@ -710,7 +1146,6 @@ def get_realtime_quote(ticker: str) -> dict:
     if not t:
         return {}
     candidates = []
-    # 주식/ETF는 Nasdaq 실시간 API와 Yahoo 1d/5m를 모두 조회하여 최신 날짜를 교차 검증
     if not any(c in t for c in ("^", "=", "-")):
         q_nq = _quote_from_nasdaq(t)
         if q_nq.get("price", 0.0) > 0:
@@ -737,7 +1172,6 @@ def get_realtime_quote(ticker: str) -> dict:
     if not candidates:
         return {}
 
-    # trade_date가 가장 최신인 소스를 최우선 선택 (동일 날짜면 확장장/볼륨 정보가 풍부한 후보 우선)
     candidates.sort(
         key=lambda c: (
             str(c.get("trade_date") or ""),
@@ -747,8 +1181,9 @@ def get_realtime_quote(ticker: str) -> dict:
         reverse=True,
     )
     best = dict(candidates[0])
-    # 만약 best에 ext_price나 volume이 비어있고 동일 날짜의 다른 후보에 있다면 보완
     for c in candidates[1:]:
+        if not best.get("company_name") and c.get("company_name"):
+            best["company_name"] = c["company_name"]
         if c.get("trade_date") == best.get("trade_date"):
             if best.get("volume", 0.0) <= 0 and c.get("volume", 0.0) > 0:
                 best["volume"] = c["volume"]
@@ -760,11 +1195,18 @@ def get_realtime_quote(ticker: str) -> dict:
     return best
 
 
+# ⭐ [16.5-R1] 실시간 봉 병합 로직 안전화:
+# - rt_dt > last_idx (실시간이 새로운 거래일) → 새 봉 추가 및 직전봉 종가(prev_cl) 정합성 보정
+# - rt_dt == last_idx (같은 거래일) → 마지막 봉만 갱신 (전일봉 절대 건드리지 않음)
+# - rt_dt < last_idx → 아무 동작도 하지 않음 (역방향 구형 데이터 유입 방지)
 def _stitch_realtime_quote(df: pd.DataFrame, rt: dict) -> pd.DataFrame:
-    """일봉 히스토리(df)가 전일 종가에서 멈춰 있을 때 실시간 당일 봉을 자동 추가·갱신."""
+    """일봉 히스토리(df)가 전일 종가에서 멈춰 있을 때 실시간 당일 봉을 안전하게 추가·갱신."""
     if df is None or df.empty or not rt or safe_float(rt.get("price"), 0.0) <= 0:
         return df
     df = df.copy()
+    for _c in ("Open", "High", "Low", "Close", "Volume"):
+        if _c in df.columns:
+            df[_c] = pd.to_numeric(df[_c], errors="coerce").astype("float64")
     px = safe_float(rt.get("price"), 0.0)
     prev_cl = safe_float(rt.get("prev_close"), 0.0)
     rt_open = safe_float(rt.get("open"), px)
@@ -774,8 +1216,6 @@ def _stitch_realtime_quote(df: pd.DataFrame, rt: dict) -> pd.DataFrame:
     rt_vol = safe_float(rt.get("volume"), 0.0)
 
     last_idx = pd.Timestamp(df.index[-1]).normalize()
-    last_close = safe_float(df["Close"].iloc[-1], 0.0)
-
     rt_dt = last_idx
     if rt.get("trade_date"):
         try:
@@ -783,35 +1223,23 @@ def _stitch_realtime_quote(df: pd.DataFrame, rt: dict) -> pd.DataFrame:
         except Exception:
             rt_dt = last_idx
 
-    # 마지막 봉 종가가 실시간 시세의 전일종가(prev_close)와 일치하고 현재가(px)와 다르면 → 오늘 봉이 누락된 상태!
-    is_missing_today_bar = (
-        rt_dt > last_idx
-        or (
-            prev_cl > 0
-            and abs(last_close - prev_cl) / prev_cl < 0.004
-            and abs(px - last_close) / max(last_close, 1e-6) > 0.0005
-        )
-    )
-
-    if is_missing_today_bar:
-        new_dt = rt_dt if rt_dt > last_idx else (last_idx + pd.Timedelta(days=1))
+    if rt_dt > last_idx:
         vol_est = rt_vol if rt_vol > 0 else safe_float(df["Volume"].tail(5).mean(), 0.0)
         new_row = pd.DataFrame(
             [{"Open": rt_open, "High": rt_high, "Low": rt_low, "Close": px, "Volume": vol_est}],
-            index=[new_dt],
+            index=[rt_dt],
         )
         df = pd.concat([df, new_row])
         df = df[~df.index.duplicated(keep="last")].sort_index()
-    else:
-        # 이미 당일 봉이 존재하면 최신 현재가 및 고가/저가/거래량으로 최신화
+        if prev_cl > 0 and len(df) >= 2:
+            df.iloc[-2, df.columns.get_loc("Close")] = prev_cl
+    elif rt_dt == last_idx:
         df.iloc[-1, df.columns.get_loc("Close")] = px
         df.iloc[-1, df.columns.get_loc("High")] = max(safe_float(df["High"].iloc[-1], px), rt_high)
         cur_low = safe_float(df["Low"].iloc[-1], px)
         df.iloc[-1, df.columns.get_loc("Low")] = min(cur_low if cur_low > 0 else px, rt_low)
         if rt_vol > safe_float(df["Volume"].iloc[-1], 0.0):
             df.iloc[-1, df.columns.get_loc("Volume")] = rt_vol
-        if prev_cl > 0 and len(df) >= 2:
-            df.iloc[-2, df.columns.get_loc("Close")] = prev_cl
 
     return df
 
@@ -848,9 +1276,8 @@ def _fetch_yahoo_v8_direct(ticker: str, period: str = "1y") -> pd.DataFrame:
                 "Low": q.get("low"),
                 "Close": q.get("close"),
                 "Volume": q.get("volume"),
-            }, index=idx_ny)
+            }, index=idx_ny, dtype="float64")
 
-            # Yahoo 일봉 배열의 마지막 봉이 정산 중이라 Close=None인 경우 meta.regularMarketPrice로 채움
             reg_px = safe_float(meta.get("regularMarketPrice"), 0.0)
             reg_ts = meta.get("regularMarketTime")
             if reg_px > 0 and len(df) >= 1 and pd.isna(df["Close"].iloc[-1]):
@@ -866,7 +1293,6 @@ def _fetch_yahoo_v8_direct(ticker: str, period: str = "1y") -> pd.DataFrame:
                 df[col] = df[col].fillna(df["Close"])
             df["Volume"] = df["Volume"].fillna(0.0)
 
-            # meta.regularMarketTime 날짜가 마지막 봉보다 최신이면 당일 봉 추가
             if reg_px > 0 and reg_ts and not df.empty:
                 reg_dt = (
                     pd.to_datetime(int(reg_ts), unit="s", utc=True)
@@ -902,7 +1328,6 @@ def _fetch_nasdaq_history(ticker: str, period: str = "1y") -> pd.DataFrame:
     to_dt = datetime.now() + timedelta(days=1)
     from_dt = to_dt - timedelta(days=days + 5)
 
-    # 1) Nasdaq Charting API (marketData + latestIntradayData 당일 실시간 봉 동시 제공)
     try:
         c_url = (
             f"https://charting.nasdaq.com/data/charting/historical"
@@ -949,7 +1374,6 @@ def _fetch_nasdaq_history(ticker: str, period: str = "1y") -> pd.DataFrame:
     except Exception as e:
         LOG.warning("Nasdaq charting historical failed for %s: %s", t, e)
 
-    # 2) Nasdaq /api/quote/{ticker}/historical
     headers = {
         **BROWSER_HEADERS,
         "Origin": "https://www.nasdaq.com",
@@ -1028,7 +1452,6 @@ def _fetch_stooq_history(ticker: str, period: str = "1y") -> pd.DataFrame:
 @st.cache_data(ttl=CFG["cache"]["top_bar"])
 def get_top_bar_data():
     p, ch, k = 0.0, 0.0, 0.0
-    # 1) BTC-USD: Binance 실시간 -> Yahoo 실시간 Quote -> Coinbase
     try:
         rb = requests.get("https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT", timeout=4)
         if rb.status_code == 200:
@@ -1050,7 +1473,6 @@ def get_top_bar_data():
         except Exception:
             pass
 
-    # 2) USD/KRW: Yahoo 실시간 Quote -> CNBC -> Open ER-API
     qk = get_realtime_quote("KRW=X")
     if qk.get("price", 0.0) > 0:
         k = qk["price"]
@@ -1078,12 +1500,10 @@ def get_market_indices():
     out = []
     for name, t in tickers:
         cur, chg = 0.0, 0.0
-        # 1차: 실시간 Quote 엔진 (Yahoo 1d/5m meta.regularMarketPrice + CNBC 실시간 폴백)
         q = get_realtime_quote(t)
         if q.get("price", 0.0) > 0:
             cur = safe_float(q.get("price"), 0.0)
             chg = safe_float(q.get("change_pct"), 0.0)
-        # 2차: Yahoo v8 5d 일봉 폴백
         if cur <= 0:
             try:
                 d = _fetch_yahoo_v8_direct(t, "5d")
@@ -1110,6 +1530,9 @@ def _clean_tz(df: pd.DataFrame) -> pd.DataFrame:
             except Exception:
                 pass
         df = df[~df.index.duplicated(keep="last")].sort_index()
+        for _c in ("Open", "High", "Low", "Close", "Volume"):
+            if _c in df.columns:
+                df[_c] = pd.to_numeric(df[_c], errors="coerce").astype("float64")
     return df
 
 
@@ -1162,8 +1585,6 @@ def get_history(ticker: str, period: str = "1y") -> pd.DataFrame:
         LOG.error("All 5 history sources failed for %s", t)
         return pd.DataFrame()
 
-    # ⭐ 핵심: 어떤 히스토리 소스를 사용했든 실시간 최신 시세(get_realtime_quote)를 조회해
-    # 전일 종가에서 멈춰 있는 경우 오늘 봉을 즉시 병합(Stitching)하여 100% 현재 데이터를 보장!
     try:
         rt = get_realtime_quote(t)
         if rt and safe_float(rt.get("price"), 0.0) > 0:
@@ -1176,7 +1597,6 @@ def get_history(ticker: str, period: str = "1y") -> pd.DataFrame:
 
 @st.cache_data(ttl=CFG["cache"]["market_cap"])
 def get_market_cap(ticker: str):
-    # 1차: Finnhub (키가 있을 때)
     if FINNHUB_KEY and HAS_FINNHUB_LIB:
         try:
             client = finnhub.Client(api_key=FINNHUB_KEY)
@@ -1186,7 +1606,6 @@ def get_market_cap(ticker: str):
                 return mc_fh * 1e6
         except Exception:
             pass
-    # 2차: Nasdaq summary API 시가총액 (야후 차단 무관)
     try:
         url = f"https://api.nasdaq.com/api/quote/{urllib.parse.quote(ticker.upper())}/summary?assetclass=stocks"
         r = requests.get(url, headers={**BROWSER_HEADERS, "Referer": "https://www.nasdaq.com/"}, timeout=5)
@@ -1197,7 +1616,6 @@ def get_market_cap(ticker: str):
                 return mc_val
     except Exception:
         pass
-    # 3차: yfinance fast_info
     try:
         t = yf.Ticker(ticker)
         fi = t.fast_info
@@ -1247,7 +1665,7 @@ def get_fear_and_greed_index():
 
     if score <= 25:
         kr_label, badge_cls, bar_color = "😱 극단적 공포 (Extreme Fear)", "badge-green", "#10b981"
-        advice = "대중의 패닉 셀링 구간입니다. 워런 버핏·코너스의 역발상 매수 적기이며, 트레일링 스탑은 중기 표준폭으로 넓게 유지하십시오."
+        advice = "대중의 패닉 셀링 구간입니다. 단, 계약 해지·유상증자 등 개별 악재가 없는 종목에 한해 역발상 매수가 유효합니다."
     elif score <= 45:
         kr_label, badge_cls, bar_color = "😨 공포 (Fear)", "badge-blue", "#38bdf8"
         advice = "시장 경계감이 높은 저점 매집 구간입니다. 지지선 확인 후 분할 매수가 유리합니다."
@@ -1382,8 +1800,22 @@ def evaluate_squeeze_potential(short_data, gex_data, current_price, box_high, vo
 # ==============================================================================
 # 8) SQLite
 # ==============================================================================
+_ACTIVE_DB_PATH = CFG["paths"]["db"]
+
+
 def _db_conn():
-    return sqlite3.connect(CFG["paths"]["db"], check_same_thread=False)
+    global _ACTIVE_DB_PATH
+    try:
+        conn = sqlite3.connect(_ACTIVE_DB_PATH, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=MEMORY;")
+        conn.execute("PRAGMA synchronous=OFF;")
+        return conn
+    except Exception:
+        _ACTIVE_DB_PATH = "/tmp/gangjin_portfolio.db"
+        conn = sqlite3.connect(_ACTIVE_DB_PATH, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=MEMORY;")
+        conn.execute("PRAGMA synchronous=OFF;")
+        return conn
 
 
 def init_db():
@@ -1632,10 +2064,505 @@ def normalize_indices_key(indices):
 
 
 # ==============================================================================
-# 10) MACRO + NEWS (⭐ Patch A: bad_newest_hours + Patch B: Finnhub 0건 시 RSS 폴백)
+# 9-B) MULTI-SOURCE EARNINGS CALENDAR ENGINE (⭐ [16.5] 실적발표일 6중 정밀 탐지 엔진)
 # ==============================================================================
+_ETF_NO_EARNINGS = frozenset({
+    "SPY", "QQQ", "DIA", "IWM", "VOO", "VTI", "IVV", "SOXX", "SMH", "ARKK",
+    "XLF", "XLE", "XLK", "XLV", "XLI", "XLP", "XLY", "XLU", "XLB", "XLRE",
+    "TLT", "IEF", "SHY", "GLD", "SLV", "USO", "UNG", "IBIT", "FBTC", "BITO",
+    "SCHD", "JEPI", "JEPQ", "MSTY", "NVDY", "TSLY", "CONY",
+})
+
+
+def _format_selected_earnings(best_date, ny_today, tod_hint: str = "", is_estimated: bool = False) -> dict:
+    """선정된 실적 발표일(best_date)과 미국 동부 오늘 날짜(ny_today)의 D-Day 차이를 계산하여 배지·안내문 생성."""
+    dl = (best_date - ny_today).days
+    d_str = best_date.strftime("%Y-%m-%d")
+    est_tag = " · 예상" if is_estimated else ""
+    tod_tag = tod_hint or ""
+    if dl == 0:
+        return {
+            "info": f"🚨 오늘 실적 발표 (D-Day: {d_str}{tod_tag})",
+            "imminent": True,
+            "badge": "badge-red",
+            "days_left": 0,
+            "date_str": d_str,
+            "is_confirmed": not is_estimated,
+        }
+    if 1 <= dl <= 7:
+        prefix = "⚠️ 실적 시즌 임박" if is_estimated else "⚠️ 실적 임박"
+        return {
+            "info": f"{prefix} (D-{dl}일: {d_str}{tod_tag}{est_tag})",
+            "imminent": True,
+            "badge": "badge-yellow",
+            "days_left": dl,
+            "date_str": d_str,
+            "is_confirmed": not is_estimated,
+        }
+    if dl > 7:
+        prefix = "📅 차기 실적(예상)" if is_estimated else "📅 차기 실적"
+        return {
+            "info": f"{prefix}: {d_str} (D-{dl}일{tod_tag})",
+            "imminent": False,
+            "badge": "badge-indigo",
+            "days_left": dl,
+            "date_str": d_str,
+            "is_confirmed": not is_estimated,
+        }
+    # 최근 1~5일 이내 실적 발표 완료 (-5 <= dl < 0)
+    return {
+        "info": f"📢 최근 실적 발표 완료 (D+{abs(dl)}일: {d_str})",
+        "imminent": False,
+        "badge": "badge-teal",
+        "days_left": dl,
+        "date_str": d_str,
+        "is_confirmed": True,
+    }
+
+
+@st.cache_data(ttl=CFG["cache"]["earnings"])
+def get_earnings_schedule(ticker: str) -> dict:
+    """
+    ⭐ [16.5] 실적발표일 다중 소스 통합 조회 엔진:
+    1차: Nasdaq Analyst Earnings Date API & Quote Notifications/Summary API (야후 차단 무관)
+    2차: Finnhub Earnings Calendar API (/api/v1/calendar/earnings, 장전/장후 시간 포함)
+    3차: CNBC Quote EventData (next_earnings_date)
+    4차: Yahoo Finance 다중 추출 (calendar dict/DataFrame 전 항목 + get_earnings_dates + info timestamps)
+    5차: CFG["known_earnings"] 수동 보정 사전 (IREN·NVDA·TSLA 등 주요 종목)
+    6차: 직전 분기 실적일 기반 +91일(13주) 차기 분기 주기 자동 추정 폴백
+    """
+    t = ticker.strip().upper()
+    default_res = {
+        "info": "실적 일정 미정/통과",
+        "imminent": False,
+        "badge": "badge-indigo",
+        "days_left": None,
+        "date_str": "",
+        "is_confirmed": False,
+    }
+    if not t or any(c in t for c in ("^", "=", "-")):
+        return default_res
+    if t in CFG["trail"]["leverage_etfs"] or t in _ETF_NO_EARNINGS:
+        return {
+            "info": "📌 ETF 상품 (개별 실적 없음)",
+            "imminent": False,
+            "badge": "badge-indigo",
+            "days_left": None,
+            "date_str": "",
+            "is_confirmed": True,
+        }
+
+    ny_today = _ny_today_date()
+    # 후보 리스트: (date_obj, priority, tod_hint) — priority가 낮을수록(1~5) 신뢰도 높음
+    candidates = []
+
+    def _add_candidates(raw_val, priority: int, tod_text: str = ""):
+        tod = _detect_tod_label(tod_text)
+        for d in _extract_dates_from_any(raw_val, ny_today):
+            candidates.append((d, priority, tod))
+
+    # ------------------------------------------------------------------
+    # [1차] Nasdaq 공식 Analyst Earnings-Date & Quote Notifications API
+    # ------------------------------------------------------------------
+    nq_headers = {
+        **BROWSER_HEADERS,
+        "Origin": "https://www.nasdaq.com",
+        "Referer": "https://www.nasdaq.com/",
+    }
+    try:
+        u_ed = f"https://api.nasdaq.com/api/analyst/{urllib.parse.quote(t)}/earnings-date"
+        r_ed = requests.get(u_ed, headers=nq_headers, timeout=4)
+        if r_ed.status_code == 200:
+            d_ed = (r_ed.json() or {}).get("data") or {}
+            ann_txt = str(d_ed.get("announcement") or d_ed.get("earningsDate") or "")
+            _add_candidates(ann_txt, priority=1, tod_text=ann_txt)
+    except Exception as e:
+        LOG.debug("Nasdaq earnings-date failed for %s: %s", t, e)
+
+    try:
+        u_inf = f"https://api.nasdaq.com/api/quote/{urllib.parse.quote(t)}/info?assetclass=stocks"
+        r_inf = requests.get(u_inf, headers=nq_headers, timeout=4)
+        if r_inf.status_code == 200:
+            d_inf = (r_inf.json() or {}).get("data") or {}
+            notifs = d_inf.get("notifications") or []
+            for nf in notifs:
+                hl = str(nf.get("headline") or "")
+                for ev in (nf.get("eventTypes") or []):
+                    msg = str(ev.get("message") or "")
+                    ev_name = str(ev.get("eventName") or "")
+                    if "earning" in (hl + " " + msg + " " + ev_name).lower():
+                        _add_candidates(msg or hl, priority=1, tod_text=msg)
+            ks = d_inf.get("keyStats") or {}
+            for k_name, k_obj in ks.items():
+                if "earning" in str(k_name).lower() and isinstance(k_obj, dict):
+                    _add_candidates(k_obj.get("value"), priority=1, tod_text=str(k_obj.get("value") or ""))
+    except Exception:
+        pass
+
+    try:
+        u_sum = f"https://api.nasdaq.com/api/quote/{urllib.parse.quote(t)}/summary?assetclass=stocks"
+        r_sum = requests.get(u_sum, headers=nq_headers, timeout=4)
+        if r_sum.status_code == 200:
+            sd = ((r_sum.json() or {}).get("data") or {}).get("summaryData") or {}
+            for k_name in ("EarningsDate", "earningsDate", "NextEarningsDate"):
+                if k_name in sd and isinstance(sd[k_name], dict):
+                    val_s = sd[k_name].get("value")
+                    _add_candidates(val_s, priority=1, tod_text=str(val_s or ""))
+    except Exception:
+        pass
+
+    # ------------------------------------------------------------------
+    # [2차] Finnhub Earnings Calendar API (/api/v1/calendar/earnings)
+    # ------------------------------------------------------------------
+    if FINNHUB_KEY:
+        try:
+            f_from = (ny_today - timedelta(days=7)).strftime("%Y-%m-%d")
+            f_to = (ny_today + timedelta(days=130)).strftime("%Y-%m-%d")
+            u_fh = f"https://finnhub.io/api/v1/calendar/earnings?symbol={urllib.parse.quote(t)}&from={f_from}&to={f_to}&token={FINNHUB_KEY}"
+            r_fh = requests.get(u_fh, headers=BROWSER_HEADERS, timeout=4)
+            if r_fh.status_code == 200:
+                ec_list = (r_fh.json() or {}).get("earningsCalendar") or []
+                for item in ec_list:
+                    _add_candidates(item.get("date"), priority=1, tod_text=str(item.get("hour") or ""))
+        except Exception as e:
+            LOG.debug("Finnhub earnings calendar failed for %s: %s", t, e)
+
+    # ------------------------------------------------------------------
+    # [3차] CNBC Quote Webservice EventData (next_earnings_date)
+    # ------------------------------------------------------------------
+    try:
+        u_cb = (
+            "https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol"
+            f"?symbols={urllib.parse.quote(t)}&requestMethod=itv&noform=1&partnerId=2&fund=1&exthrs=1&output=json&events=1"
+        )
+        r_cb = requests.get(u_cb, headers=BROWSER_HEADERS, timeout=4)
+        if r_cb.status_code == 200:
+            qq = (((r_cb.json() or {}).get("FormattedQuoteResult") or {}).get("FormattedQuote") or [None])[0] or {}
+            ev_data = qq.get("EventData") or {}
+            for k_cb in ("next_earnings_date", "earnings_date", "nextEarningsDate"):
+                if ev_data.get(k_cb):
+                    _add_candidates(ev_data.get(k_cb), priority=2)
+                if qq.get(k_cb):
+                    _add_candidates(qq.get(k_cb), priority=2)
+    except Exception:
+        pass
+
+    # ------------------------------------------------------------------
+    # [4차] Yahoo Finance (calendar dict/DataFrame + get_earnings_dates + info)
+    # ------------------------------------------------------------------
+    try:
+        yt = yf.Ticker(t)
+        try:
+            cal = yt.calendar
+            if isinstance(cal, dict):
+                for k_cal, v_cal in cal.items():
+                    if "earning" in str(k_cal).lower():
+                        _add_candidates(v_cal, priority=2)
+            elif isinstance(cal, pd.DataFrame) and not cal.empty:
+                for idx_k in cal.index:
+                    if "earning" in str(idx_k).lower():
+                        _add_candidates(cal.loc[idx_k].values, priority=2)
+                for col_k in cal.columns:
+                    if "earning" in str(col_k).lower():
+                        _add_candidates(cal[col_k].values, priority=2)
+        except Exception:
+            pass
+
+        # Yahoo calendar가 비어 있을 때 get_earnings_dates(limit=8) 폴백
+        if not any(0 <= (d - ny_today).days <= 120 for d, _, _ in candidates):
+            try:
+                ed_df = yt.get_earnings_dates(limit=8)
+                if isinstance(ed_df, pd.DataFrame) and not ed_df.empty:
+                    _add_candidates(ed_df.index, priority=2)
+            except Exception:
+                pass
+
+        # info['earningsTimestamp'] / earningsTimestampStart 폴백
+        if not any(0 <= (d - ny_today).days <= 120 for d, _, _ in candidates):
+            try:
+                inf = yt.info or {}
+                for ts_k in ("earningsTimestamp", "earningsTimestampStart", "earningsTimestampEnd"):
+                    if inf.get(ts_k):
+                        _add_candidates(inf.get(ts_k), priority=2)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # ------------------------------------------------------------------
+    # [5차] CFG["known_earnings"] 수동 보정 사전 (과거·미래 전체 리스트 중 유효 날짜 선별)
+    # ------------------------------------------------------------------
+    known_list = (CFG.get("known_earnings") or {}).get(t) or []
+    if known_list:
+        _add_candidates(known_list, priority=3)
+
+    if not candidates:
+        return default_res
+
+    # 날짜별 최고 우선순위 및 장전/장후 태그 병합
+    by_date = {}
+    for d_obj, prio, tod in candidates:
+        if d_obj not in by_date:
+            by_date[d_obj] = (prio, tod)
+        else:
+            old_p, old_tod = by_date[d_obj]
+            by_date[d_obj] = (min(old_p, prio), old_tod or tod)
+
+    # 1순위: 오늘(D-Day)부터 향후 125일 이내의 가장 가까운 예정 실적일 (0 <= dl <= 125)
+    upcoming = [
+        (d_obj, prio, tod)
+        for d_obj, (prio, tod) in by_date.items()
+        if 0 <= (d_obj - ny_today).days <= 125
+    ]
+    if upcoming:
+        # 가장 가까운 미래 실적일을 우선하되, 불과 1~3일 차이 내에서는 더 높은 신뢰도(낮은 priority) 우선
+        upcoming.sort(key=lambda x: ((x[0] - ny_today).days, x[1]))
+        best_d, best_p, best_tod = upcoming[0]
+        for alt_d, alt_p, alt_tod in upcoming[1:]:
+            if abs((alt_d - best_d).days) <= 4 and alt_p < best_p:
+                best_d, best_p, best_tod = alt_d, alt_p, (alt_tod or best_tod)
+        return _format_selected_earnings(best_d, ny_today, best_tod, is_estimated=False)
+
+    # 2순위: 최근 5일 이내에 막 실적을 발표한 경우 (-5 <= dl < 0)
+    recent_past = [
+        (d_obj, prio, tod)
+        for d_obj, (prio, tod) in by_date.items()
+        if -5 <= (d_obj - ny_today).days < 0
+    ]
+    if recent_past:
+        recent_past.sort(key=lambda x: (abs((x[0] - ny_today).days), x[1]))
+        best_d, _, best_tod = recent_past[0]
+        return _format_selected_earnings(best_d, ny_today, best_tod, is_estimated=False)
+
+    # 3순위: 125일 이후 먼 미래 일정이 존재하는 경우
+    far_future = [
+        (d_obj, prio, tod)
+        for d_obj, (prio, tod) in by_date.items()
+        if (d_obj - ny_today).days > 125
+    ]
+    if far_future:
+        far_future.sort(key=lambda x: ((x[0] - ny_today).days, x[1]))
+        best_d, _, best_tod = far_future[0]
+        return _format_selected_earnings(best_d, ny_today, best_tod, is_estimated=False)
+
+    # 4순위 (6차 폴백): 과거 실적일만 존재할 때 분기 주기(+91일 = 13주)로 차기 실적일 자동 추정
+    past_dates = sorted(d_obj for d_obj in by_date.keys() if (d_obj - ny_today).days < -5)
+    if past_dates:
+        proj_d = past_dates[-1]
+        for _ in range(8):
+            proj_d = proj_d + timedelta(days=91)
+            if (proj_d - ny_today).days >= 0:
+                break
+        # 주말이면 가장 가까운 평일(목/화)로 보정
+        if proj_d.weekday() == 5:
+            proj_d -= timedelta(days=1)
+        elif proj_d.weekday() == 6:
+            proj_d += timedelta(days=1)
+        if 0 <= (proj_d - ny_today).days <= 105:
+            return _format_selected_earnings(proj_d, ny_today, "", is_estimated=True)
+
+    return default_res
+
+
+def _refine_earnings_with_news(earn_sched: dict, raw_candidates: list) -> dict:
+    """
+    ⭐ [16.5] 실시간 수집된 뉴스 헤드라인에서:
+    1) 'to report Q3 results on May 7, 2026' 등 실적발표일 공지 PR이 있으면 날짜 자동 추출·보강
+    2) 최근 48h 이내 'Reports Q3 Results', 'Q3 Earnings Beat' 등 실제 실적 발표 기사가 있으면 즉시 반영
+    """
+    if not raw_candidates:
+        return earn_sched
+    ny_today = _ny_today_date()
+    has_confirmed_upcoming = bool(
+        earn_sched.get("is_confirmed")
+        and earn_sched.get("days_left") is not None
+        and 0 <= earn_sched["days_left"] <= 90
+    )
+
+    pr_schedule_pat = re.compile(
+        r"\b(to report|to announce|schedules|scheduled|sets date|will report|will announce|host[s]? .*?call|release[s]? .*?results)\b.*?"
+        r"\b(earnings|financial results|quarterly results|first[- ]quarter|second[- ]quarter|third[- ]quarter|fourth[- ]quarter|q[1-4]|fiscal)\b",
+        flags=re.IGNORECASE,
+    )
+    just_reported_pat = re.compile(
+        r"(\b(reports|reported|posts|posted|announces|announced|delivers)\s+(record\s+)?(q[1-4]|first[- ]quarter|second[- ]quarter|third[- ]quarter|fourth[- ]quarter|quarterly|full[- ]year|fy\s*\d{2,4})\b.*?(results|earnings|revenue))"
+        r"|(\b(q[1-4]\s+earnings\s+(beat|miss|top|surpass)|eps\s+(beats|misses|tops)\s+estimates|revenue\s+(beats|misses)\s+estimates)\b)",
+        flags=re.IGNORECASE,
+    )
+
+    # 1) 실적 발표 예정일 공지 PR에서 정확한 날짜 추출
+    if not has_confirmed_upcoming:
+        for cand in raw_candidates:
+            title = str(cand.get("raw_title") or "")
+            if pr_schedule_pat.search(title):
+                extracted = _extract_dates_from_any(title, ny_today)
+                valid_up = [d for d in extracted if -2 <= (d - ny_today).days <= 120]
+                if valid_up:
+                    valid_up.sort(key=lambda d: abs((d - ny_today).days))
+                    tod = _detect_tod_label(title)
+                    return _format_selected_earnings(valid_up[0], ny_today, tod, is_estimated=False)
+
+    # 2) 최근 48h 내 실제 실적 발표 기사가 존재할 때 '미정/통과' 상태라면 즉시 '실적 발표 완료'로 전환
+    if earn_sched.get("days_left") is None or not earn_sched.get("is_confirmed"):
+        for cand in raw_candidates:
+            age_h = safe_float(cand.get("age_h"), 9999.0)
+            if age_h > 48.0:
+                continue
+            title = str(cand.get("raw_title") or "")
+            if just_reported_pat.search(title) and not pr_schedule_pat.search(title):
+                pub_dt = cand.get("pub_dt")
+                rep_date = pub_dt.date() if isinstance(pub_dt, datetime) else ny_today
+                dl = (rep_date - ny_today).days
+                d_str = rep_date.strftime("%Y-%m-%d")
+                return {
+                    "info": f"📢 최근 실적 발표 완료 ({d_str} · {age_h:.0f}h 전)",
+                    "imminent": False,
+                    "badge": "badge-teal",
+                    "days_left": dl,
+                    "date_str": d_str,
+                    "is_confirmed": True,
+                }
+
+    return earn_sched
+
+
+# ==============================================================================
+# 10) MACRO + NEWS (⭐ [16.5-R1] 뉴스 수집 10분 독립 캐시 + 전 섹터 호악재 판독 + 과거 뉴스 패스)
+# ==============================================================================
+@st.cache_data(ttl=CFG["cache"]["news_candidates"])
+def fetch_raw_news_candidates(ticker: str, company_name: str = "") -> list:
+    """
+    ⭐ [16.5-R1] 4중 뉴스 수집(Finnhub -> Yahoo RSS -> Google RSS -> Nasdaq News)을
+    거시 지수(indices_key) 변동과 분리하여 10분(600초) 단위로 독립 캐싱합니다.
+    """
+    ncfg = CFG["news"]
+    stale_limit_h = ncfg["recency_hours"]["stale_pass"]  # 72h 하드 컷오프
+    raw_candidates = []
+    seen_titles = set()
+
+    def _collect_candidate(raw_title, raw_link, pub_dt, src_tag):
+        if not raw_title or pub_dt is None:
+            return
+        age_h = _hours_since(pub_dt)
+        # ⭐ 72시간(3일) 초과 기사는 과거 뉴스이므로 수집 단계에서 100% 폐기 (무조건 선별 패스)
+        if age_h > stale_limit_h:
+            return
+        tl = raw_title.lower()
+        # ⭐ 회고성·클릭베이트("last month", "if you invested" 등) 기사 무조건 패스
+        for pat in ncfg["retrospective_skip"]:
+            if re.search(pat, tl):
+                return
+        key = _normalize_title(raw_title)
+        if not key or key in seen_titles:
+            return
+        seen_titles.add(key)
+        raw_candidates.append({
+            "raw_title": raw_title.strip(),
+            "raw_link": raw_link or "#",
+            "pub_dt": pub_dt,
+            "age_h": age_h,
+            "src_tag": src_tag,
+        })
+
+    # ⭐ [1차] Finnhub Company News API (최근 3일)
+    if FINNHUB_KEY and HAS_FINNHUB_LIB:
+        try:
+            client = finnhub.Client(api_key=FINNHUB_KEY)
+            today = datetime.now()
+            from_date = (today - timedelta(days=3)).strftime('%Y-%m-%d')
+            to_date = (today + timedelta(days=1)).strftime('%Y-%m-%d')
+            fh_news = client.company_news(ticker, _from=from_date, to=to_date) or []
+            for item in fh_news[:25]:
+                ts = item.get('datetime', 0) or 0
+                pub_dt = datetime.fromtimestamp(ts) if ts > 0 else None
+                _collect_candidate(item.get('headline', ''), item.get('url', '#'), pub_dt, "Finnhub")
+        except Exception as e:
+            LOG.warning("Finnhub news fetch failed for %s: %s", ticker, e)
+
+    # ⭐ [2차] Yahoo Finance 공식 티커 RSS (Seeking Alpha·Benzinga·BusinessWire 직결 속보)
+    try:
+        yh_rss_url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={urllib.parse.quote(ticker.upper())}&region=US&lang=en-US"
+        r_yh = requests.get(yh_rss_url, headers=BROWSER_HEADERS, timeout=5)
+        if r_yh.status_code == 200 and r_yh.content:
+            root_yh = ET.fromstring(r_yh.content)
+            for item in root_yh.findall('.//item')[:25]:
+                t_el = item.find('title')
+                l_el = item.find('link')
+                p_el = item.find('pubDate')
+                pub_dt = None
+                if p_el is not None and p_el.text:
+                    try:
+                        pub_dt = parsedate_to_datetime(p_el.text)
+                    except Exception:
+                        pub_dt = None
+                _collect_candidate(
+                    t_el.text if t_el is not None else "",
+                    l_el.text if l_el is not None else "#",
+                    pub_dt,
+                    "Yahoo RSS",
+                )
+    except Exception as e:
+        LOG.warning("Yahoo RSS fetch failed for %s: %s", ticker, e)
+
+    # ⭐ [3차] Google News RSS (티커 + 기업명 병행 검색으로 'Aevex' 같은 기업명 단독 표기 속보 포착)
+    try:
+        cname = (company_name or "").strip()
+        if cname and cname.upper() != ticker.upper():
+            q_str = f'("{ticker}" OR "{cname}") stock when:3d'
+        else:
+            q_str = f'"{ticker}" stock news when:3d'
+        g_url = f"https://news.google.com/rss/search?q={urllib.parse.quote(q_str)}&hl=en-US&gl=US&ceid=US:en"
+        r_gn = requests.get(g_url, headers=BROWSER_HEADERS, timeout=5)
+        if r_gn.status_code == 200 and r_gn.content:
+            root_gn = ET.fromstring(r_gn.content)
+            for item in root_gn.findall('.//item')[:25]:
+                t_el = item.find('title')
+                l_el = item.find('link')
+                p_el = item.find('pubDate')
+                pub_dt = None
+                if p_el is not None and p_el.text:
+                    try:
+                        pub_dt = parsedate_to_datetime(p_el.text)
+                    except Exception:
+                        pub_dt = None
+                _collect_candidate(
+                    t_el.text if t_el is not None else "",
+                    l_el.text if l_el is not None else "#",
+                    pub_dt,
+                    "Google RSS",
+                )
+    except Exception as e:
+        LOG.warning("Google RSS fetch failed for %s: %s", ticker, e)
+
+    # ⭐ [4차] Nasdaq 공식 종목 뉴스 API (나스닥/뉴욕거래소 공시·프레스릴리즈 보완)
+    try:
+        nq_news_url = (
+            f"https://www.nasdaq.com/api/news/topic/articlebysymbol"
+            f"?q={urllib.parse.quote(ticker.upper())}|STOCKS&offset=0&limit=15&fallback=true"
+        )
+        r_nqn = requests.get(
+            nq_news_url,
+            headers={**BROWSER_HEADERS, "Referer": "https://www.nasdaq.com/"},
+            timeout=5,
+        )
+        if r_nqn.status_code == 200:
+            rows_n = ((r_nqn.json() or {}).get("data") or {}).get("rows") or []
+            for rn in rows_n[:15]:
+                title_n = str(rn.get("title") or "").strip()
+                url_n = str(rn.get("url") or "").strip()
+                if url_n.startswith("/"):
+                    url_n = f"https://www.nasdaq.com{url_n}"
+                pub_dt_n = _parse_relative_or_date(rn.get("ago", ""), rn.get("created", ""))
+                _collect_candidate(title_n, url_n, pub_dt_n, "Nasdaq News")
+    except Exception as e:
+        LOG.warning("Nasdaq news fetch failed for %s: %s", ticker, e)
+
+    raw_candidates.sort(key=lambda x: x["age_h"])
+    return raw_candidates
+
+
 @st.cache_data(ttl=CFG["cache"]["macro"])
-def analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=False):
+def analyze_macro_and_stock_catalysts(ticker, indices_key, company_name: str = "", use_llm: bool = False):
     idx_map = {name: {"price": price, "change": chg} for name, price, chg in indices_key}
     tnx = idx_map.get("10년물 국채", {"price": 4.2, "change": 0.0})
     wti = idx_map.get("WTI 원유", {"price": 72.0, "change": 0.0})
@@ -1673,125 +2600,160 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=False):
     if not macro_alerts:
         macro_alerts.append(f"⚖️ 거시 중립 (금리 {tnx['price']:.2f}% | WTI ${wti['price']:.1f} | VIX {vix['price']:.1f})")
 
-    earnings_info = "실적 일정 미정/통과"
-    earnings_imminent = False
-    try:
-        cal = yf.Ticker(ticker).calendar
-        if isinstance(cal, dict) and cal.get('Earnings Date'):
-            ed = cal['Earnings Date']
-            ne = ed[0] if isinstance(ed, list) else ed
-            dl = (pd.to_datetime(ne).date() - datetime.now().date()).days
-            if 0 <= dl <= 7:
-                earnings_info = f"⚠️ 실적 임박 (D-{dl}일: {ne})"
-                earnings_imminent = True
-            elif dl > 7:
-                earnings_info = f"📅 차기 실적: {ne} (D-{dl}일)"
-    except Exception:
-        pass
+    # ⭐ [16.5] 6중 실적 발표일 정밀 탐지 (Nasdaq -> Finnhub -> CNBC -> Yahoo 다중포맷 -> KNOWN_EARNINGS -> 뉴스 PR 보정)
+    earn_sched = get_earnings_schedule(ticker)
+    earnings_info = earn_sched["info"]
+    earnings_imminent = earn_sched["imminent"]
+    earnings_badge = earn_sched["badge"]
+    earnings_days_left = earn_sched["days_left"]
+
+    ncfg = CFG["news"]
+    stale_limit_h = ncfg["recency_hours"]["stale_pass"]  # 72h 하드 컷오프
+    active_limit_h = ncfg["recency_hours"]["recent"]     # 48h 시그널 컷오프
+
+    # ⭐ [16.5-R1] 10분 독립 캐시에서 뉴스 후보군 로드 후 현재 시각 기준 경과시간(age_h) 동적 갱신
+    cached_candidates = fetch_raw_news_candidates(ticker, company_name=company_name)
+    raw_candidates = []
+    for c_item in cached_candidates:
+        cur_age_h = _hours_since(c_item.get("pub_dt"))
+        if cur_age_h <= stale_limit_h:
+            item_copy = dict(c_item)
+            item_copy["age_h"] = cur_age_h
+            raw_candidates.append(item_copy)
+    raw_candidates.sort(key=lambda x: x["age_h"])
 
     news_items = []
-    ncfg = CFG["news"]
-    bad_recent_threshold = ncfg["bad_recent_threshold"]
-
     ch_score = ebh_score = bh_score = gh_score = 0.0
     ch_cnt = ebh_cnt = bh_cnt = gh_cnt = 0
     bad_recent_cnt = 0
-    bad_newest_hours = 9999.0   # ⭐ Patch A: 가장 최근 악재 경과 시간(시간)
-    seen_titles = set()
+    severe_bad_cnt = 0
+    stale_passed_cnt = 0
+    bad_newest_hours = 9999.0
+    bull_newest_hours = 9999.0
 
-    def _classify_and_accumulate(raw_title, raw_link, raw_pub_str, pub_dt, date_display):
-        nonlocal ch_score, ebh_score, bh_score, gh_score
-        nonlocal ch_cnt, ebh_cnt, bh_cnt, gh_cnt, bad_recent_cnt, bad_newest_hours
-        key = _normalize_title(raw_title)
-        if not key or key in seen_titles:
-            return
-        seen_titles.add(key)
-
-        w = _recency_weight(pub_dt)
-        if w <= 0.0:
-            return  # 7일 이상은 완전 무시
-
+    for cand in raw_candidates[:20]:
+        raw_title = cand["raw_title"]
+        raw_link = cand["raw_link"]
+        pub_dt = cand["pub_dt"]
+        age_h = cand["age_h"]
+        src_tag = cand["src_tag"]
         tl = raw_title.lower()
-        c_hit  = any(k in tl for k in ncfg["contract"])
-        eb_hit = any(k in tl for k in ncfg["earnings_bull"]) or any(k in tl for k in ncfg["cut_bullish"])
-        bad_hit= any(k in tl for k in ncfg["bad_strict"])    or any(k in tl for k in ncfg["cut_bearish"])
-        g_hit  = any(k in tl for k in ncfg["geo"])
 
-        if c_hit:
-            ch_score += 8 * w
-            ch_cnt += 1
-        if eb_hit:
-            ebh_score += 6 * w
-            ebh_cnt += 1
+        # 오탐 방지 문구("no orders were stopped", "reaffirms", "lifts clinical hold", "denies [FTC's] injunction" 등) 확인
+        is_fp_relief = _any_kw(tl, ncfg["bad_false_positive"]) or bool(
+            re.search(
+                r"\bdenies\s+(?:[a-z0-9'\-]+\s+){1,2}(?:injunction|class action|class certification|bid protest|gao protest)\b",
+                tl,
+            )
+        )
+
+        severe_court_bad = bool(
+            re.search(
+                r"\bdenies\s+(?:[a-z0-9'\-]+\s+){0,2}(?:motion to dismiss|approval)\b",
+                tl,
+            )
+        )
+        severe_hit = _any_kw(tl, ncfg["bad_severe"]) or severe_court_bad
+        strict_hit = _any_kw(tl, ncfg["bad_strict"]) or _any_kw(tl, ncfg["cut_bearish"])
+        # 만약 "crashes" / "plunges" / "52-week low" / "halts" / "denies approval" / "denies motion to dismiss"가 명시된 경우 중대 악재 유지
+        hard_crash = severe_court_bad or any(
+            _kw_match(tl, k)
+            for k in (
+                "crash", "crashes", "plunge", "plunges", "52-week low",
+                "halt purchases", "halts", "denies approval", "fda denies",
+                "denies motion to dismiss", "motion to dismiss denied",
+            )
+        )
+        if is_fp_relief and not hard_crash:
+            severe_hit = False
+            strict_hit = False
+
+        bad_hit = severe_hit or strict_hit
+
+        # 계약/수주 호재 판별: 확정적 수주 구문(contract_strong)이거나,
+        # 일반 계약 단어(contract_context) + 수주 동사/규모(contract_action_verbs 또는 $)가 함께 있을 때만 인정
+        legal_bull_relief = bool(
+            re.search(
+                r"\bdenies\s+(?:[a-z0-9'\-]+\s+){0,2}(?:injunction|preliminary injunction|bid protest|gao protest)\b",
+                tl,
+            )
+        )
+        c_strong = _any_kw(tl, ncfg["contract_strong"]) or legal_bull_relief
+        c_ctx = _any_kw(tl, ncfg["contract_context"]) and (
+            _any_kw(tl, ncfg["contract_action_verbs"]) or ("$" in tl)
+        )
+        c_hit = c_strong or c_ctx
+        eb_hit = _any_kw(tl, ncfg["earnings_bull"]) or _any_kw(tl, ncfg["cut_bullish"])
+        g_hit = _any_kw(tl, ncfg["geo"])
+
+        # ⭐ 핵심 오분류 방지 규칙:
+        # "Navy halts Aevex drone contract", "Pentagon cancels contract", "loses $650M contract" 등
+        # 악재 키워드가 동시에 존재하면 계약/실적 호재(c_hit, eb_hit)에서 즉시 제외!
         if bad_hit:
-            bh_score += 12 * w
-            bh_cnt += 1
-            bad_newest_hours = min(bad_newest_hours, _hours_since(pub_dt))
-            if w >= bad_recent_threshold:
-                bad_recent_cnt += 1
-        if g_hit:
-            gh_score += 4 * w
-            gh_cnt += 1
+            c_hit = False
+            eb_hit = False
 
-        if bad_hit: sentiment, badge_class = "🚨 악재/주의", "badge-red"
-        elif c_hit: sentiment, badge_class = "🤝 계약/수주", "badge-green"
-        elif eb_hit: sentiment, badge_class = "📈 실적 호조", "badge-green"
-        elif g_hit: sentiment, badge_class = "🌍 거시 이슈", "badge-yellow"
-        else: sentiment, badge_class = "📰 일반/중립", "badge-blue"
+        w = _recency_weight(pub_dt)  # 48h 초과 시 w == 0.0 (과거 호재·악재 자동 패스!)
+        is_stale_pass = (age_h > active_limit_h) or (w <= 0.0)
 
-        age_note = f" · 가중치 {w:.2f}" if 0 < w < 1.0 else ""
+        if is_stale_pass:
+            if bad_hit or c_hit or eb_hit:
+                stale_passed_cnt += 1
+        else:
+            if c_hit:
+                ch_score += 8.0 * w
+                ch_cnt += 1
+                bull_newest_hours = min(bull_newest_hours, age_h)
+            if eb_hit:
+                ebh_score += 6.0 * w
+                ebh_cnt += 1
+                bull_newest_hours = min(bull_newest_hours, age_h)
+            if bad_hit:
+                # 중대 악재(계약 중단·유증·Form 144·상폐·폭락 등)는 가중 처벌(-18점), 일반 악재는 -12점
+                penalty_base = 18.0 if severe_hit else 12.0
+                bh_score += penalty_base * w
+                bh_cnt += 1
+                bad_newest_hours = min(bad_newest_hours, age_h)
+                if w >= ncfg["bad_recent_threshold"]:
+                    bad_recent_cnt += 1
+                    if severe_hit:
+                        severe_bad_cnt += 1
+            if g_hit:
+                gh_score += 4.0 * w
+                gh_cnt += 1
+
+        if is_stale_pass and (bad_hit or c_hit or eb_hit):
+            sentiment, badge_class = "⏭️ 과거뉴스 패스 (48h+)", "badge-indigo"
+        elif severe_hit:
+            sentiment, badge_class = "🚨 중대악재/경보", "badge-red"
+        elif bad_hit:
+            sentiment, badge_class = "🚨 악재/주의", "badge-red"
+        elif c_hit:
+            sentiment, badge_class = "🤝 계약/수주", "badge-green"
+        elif eb_hit:
+            sentiment, badge_class = "📈 실적/호재", "badge-green"
+        elif g_hit:
+            sentiment, badge_class = "🌍 거시 이슈", "badge-yellow"
+        else:
+            sentiment, badge_class = "📰 일반/중립", "badge-blue"
+
+        age_str = f"{age_h:.0f}h 전" if age_h < 48 else f"{age_h/24.0:.1f}일 전 (패스)"
+        date_display = f"{pub_dt.strftime('%m/%d %H:%M')} · {age_str} · {src_tag}"
 
         news_items.append({
             "title": html.escape(raw_title),
             "link": safe_url(raw_link),
-            "date": html.escape(date_display + age_note),
+            "date": html.escape(date_display),
             "sentiment": sentiment,
             "badge_class": badge_class,
         })
 
-    # ⭐ 1차 시도: Finnhub API (Patch B: 필터링 후 유효 기사가 0건이면 RSS로 자동 폴백)
-    if FINNHUB_KEY and HAS_FINNHUB_LIB:
-        try:
-            client = finnhub.Client(api_key=FINNHUB_KEY)
-            today = datetime.now()
-            from_date = (today - timedelta(days=7)).strftime('%Y-%m-%d')
-            to_date = today.strftime('%Y-%m-%d')
-            fh_news = client.company_news(ticker, _from=from_date, to=to_date)
-            if fh_news:
-                for item in fh_news[:20]:
-                    raw_title = item.get('headline', '') or ''
-                    raw_link = item.get('url', '#') or '#'
-                    ts = item.get('datetime', 0) or 0
-                    try:
-                        pub_dt = datetime.fromtimestamp(ts)
-                        pub_str = pub_dt.strftime('%b %d')
-                    except Exception:
-                        pub_dt = None
-                        pub_str = ""
-                    _classify_and_accumulate(raw_title, raw_link, pub_str, pub_dt, pub_str)
-        except Exception as e:
-            LOG.warning(f"Finnhub news fetch failed for {ticker}: {e}")
-
-    # ⭐ 2차 폴백: Google News RSS (Finnhub 미사용 또는 필터 후 0건일 때 자동 작동)
-    if len(news_items) == 0:
-        query = urllib.parse.quote(f"{ticker} stock news when:7d")
-        url = f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
-        try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=6) as response:
-                root = ET.fromstring(response.read())
-            for item in root.findall('.//item')[:20]:
-                raw_title = (item.find('title').text if item.find('title') is not None else "") or ""
-                raw_link = (item.find('link').text if item.find('link') is not None else "#") or "#"
-                pub_str = (item.find('pubDate').text if item.find('pubDate') is not None else "") or ""
-                try:
-                    pub_dt = parsedate_to_datetime(pub_str)
-                except Exception:
-                    pub_dt = None
-                date_display = pub_str[:16] if pub_str else ""
-                _classify_and_accumulate(raw_title, raw_link, pub_str, pub_dt, date_display)
-        except Exception as e:
-            LOG.warning("RSS fetch failed for %s: %s", ticker, e)
+    # 뉴스 헤드라인 기반 실적발표일 PR / 최근 48h 실적발표 완료 자동 보강
+    earn_sched = _refine_earnings_with_news(earn_sched, raw_candidates)
+    earnings_info = earn_sched["info"]
+    earnings_imminent = earn_sched["imminent"]
+    earnings_badge = earn_sched["badge"]
+    earnings_days_left = earn_sched["days_left"]
 
     catalyst_score = ch_score + ebh_score - bh_score - gh_score
     if earnings_imminent:
@@ -1815,25 +2777,39 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=False):
             pass
 
     catalyst_summary = []
-    if ch_cnt > 0: catalyst_summary.append(f"🤝 계약/파트너십 ({ch_cnt}건)")
-    if ebh_cnt > 0: catalyst_summary.append(f"📊 실적 호조 ({ebh_cnt}건)")
-    if bh_cnt > 0:
-        if bad_recent_cnt > 0:
-            catalyst_summary.append(f"🚨 악재 ({bad_recent_cnt}건 최근/48h, 총 {bh_cnt}건)")
-        else:
-            catalyst_summary.append(f"ℹ️ 과거 악재 {bh_cnt}건 (최근 48h 없음 — 영향 제한적)")
-    if gh_cnt > 0: catalyst_summary.append(f"🌍 거시 변수 ({gh_cnt}건)")
-    if llm_insight: catalyst_summary.append(f"🤖 LLM: {llm_insight}")
-    if not catalyst_summary: catalyst_summary.append("특이 돌발 악재 없음 (수급 중심)")
+    if earnings_imminent:
+        catalyst_summary.append(f"{earnings_info} — 어닝 변동성 주의 (선취매 비중 50% 이하 권장)")
+    elif earnings_days_left is not None and -5 <= earnings_days_left < 0:
+        catalyst_summary.append(f"{earnings_info} — 발표 직후 가이던스 및 기관 수급 방향성 주시")
+    if severe_bad_cnt > 0:
+        catalyst_summary.append(f"🚨 중대 악재 포착 ({severe_bad_cnt}건 / 계약중단·희석·Form144·급락 등)")
+    if bad_recent_cnt > severe_bad_cnt:
+        catalyst_summary.append(f"⚠️ 일반 악재 ({bad_recent_cnt - severe_bad_cnt}건 최근 48h 이내)")
+    if ch_cnt > 0:
+        catalyst_summary.append(f"🤝 최신 계약/수주/승인 ({ch_cnt}건 · 48h 이내)")
+    if ebh_cnt > 0:
+        catalyst_summary.append(f"📊 최신 실적/어닝/상향 ({ebh_cnt}건 · 48h 이내)")
+    if stale_passed_cnt > 0:
+        catalyst_summary.append(f"⏭️ 과거 호악재 {stale_passed_cnt}건 자동 선별 패스 (48h 경과)")
+    if gh_cnt > 0:
+        catalyst_summary.append(f"🌍 거시 변수 ({gh_cnt}건)")
+    if llm_insight:
+        catalyst_summary.append(f"🤖 LLM: {llm_insight}")
+    if not catalyst_summary:
+        catalyst_summary.append("최근 48h 내 특이 돌발 호악재 없음 (차트·수급 중심)")
 
     return {
         "macro_score": macro_score, "macro_alerts": macro_alerts,
         "earnings_info": html.escape(earnings_info), "earnings_imminent": earnings_imminent,
+        "earnings_badge": earnings_badge, "earnings_days_left": earnings_days_left,
         "contract_hits": ch_cnt,
         "earnings_bull_hits": ebh_cnt,
+        "bull_score": round(ch_score + ebh_score, 2),
+        "bull_newest_hours": round(bull_newest_hours, 1),
         "bad_news_hits": bad_recent_cnt,
+        "severe_bad_hits": severe_bad_cnt,
         "bad_news_total": bh_cnt,
-        "bad_newest_hours": round(bad_newest_hours, 1),  # ⭐ Patch A
+        "bad_newest_hours": round(bad_newest_hours, 1),
         "geo_hits": gh_cnt,
         "catalyst_score": round(catalyst_score, 2),
         "catalyst_summary": catalyst_summary,
@@ -2000,7 +2976,11 @@ def scan_watchlist(ticker_string):
             elif curr_price >= box_high:
                 action, badge = "📈 BUY", "badge-green"
             elif curr_price < ema20 and rsi <= 25.0:
-                action, badge = "🟢 PANIC BUY", "badge-green"
+                # 대량 거래량(-10% 이상 급락 + 거래량 2배 이상) 동반 폭락 시 악재 점검 경고
+                if change_pct <= -10.0 and vol_ratio >= 2.0:
+                    action, badge = "🚨 악재점검 요망", "badge-red"
+                else:
+                    action, badge = "🟢 PANIC BUY", "badge-green"
             elif curr_price < ema20:
                 action, badge = "⚠️ EXIT", "badge-red"
             elif curr_price > ema20:
@@ -2011,7 +2991,7 @@ def scan_watchlist(ticker_string):
                             "atr_pct": round(atr_pct, 1), "ts_rec": ts_rec, "is_buy": "BUY" in action})
         except Exception:
             pass
-    po = {"🔥 STRONG BUY": 0, "🟢 PANIC BUY": 1, "📈 BUY": 2, "✅ HOLD": 3, "⏸️ WAIT": 4, "⚠️ EXIT": 5}
+    po = {"🔥 STRONG BUY": 0, "🟢 PANIC BUY": 1, "📈 BUY": 2, "✅ HOLD": 3, "⏸️ WAIT": 4, "🚨 악재점검 요망": 5, "⚠️ EXIT": 6}
     signals.sort(key=lambda x: (po.get(x['action'], 99), -x['change_pct']))
     return signals
 
@@ -2243,7 +3223,1600 @@ def build_full_risk_report(holdings, benchmark="SPY"):
 
 
 # ==============================================================================
-# 14) TAB 1: 개별 종목 분석 (⭐ 실시간 시세 동기화 + Patch C 적용)
+# 13) 12-AGENT MULTI-TEAM ENGINE & CHIEF AI MANAGER & JOURNAL BIAS ANALYZER (⭐ [17.0 NEW])
+# ==============================================================================
+class AgentReport:
+    """개별 전문 에이전트(12개 팀 + 매매일지 팀) 표준 리포트 객체."""
+    def __init__(self, name: str, score: float, status: str, summary: str, details: dict = None):
+        self.name = name
+        self.score = float(score)
+        self.status = status
+        self.summary = summary
+        self.details = details or {}
+
+
+class ChiefDecision:
+    """[Agent 13] Chief AI Manager 최종 통합 의사결정 및 8단계 Veto 리포트 객체."""
+    def __init__(
+        self,
+        ticker: str,
+        action: str,
+        score: float,
+        entry_price: float,
+        stop_loss: float,
+        target_1: float,
+        target_2: float,
+        position_size: str,
+        briefing: str,
+        agent_reports: list,
+        meta_action: str,
+        meta_badge: str,
+        regime: str = "NEUTRAL",
+        veto_triggered: bool = False,
+        veto_reason: str = "",
+        weights_used: dict = None,
+    ):
+        self.ticker = ticker
+        self.action = action
+        self.score = float(score)
+        self.entry_price = float(entry_price)
+        self.stop_loss = float(stop_loss)
+        self.target_1 = float(target_1)
+        self.target_2 = float(target_2)
+        self.position_size = position_size
+        self.briefing = briefing
+        self.agent_reports = agent_reports or []
+        self.meta_action = meta_action
+        self.meta_badge = meta_badge
+        self.regime = regime
+        self.veto_triggered = veto_triggered
+        self.veto_reason = veto_reason
+        self.weights_used = weights_used or {}
+
+
+# ⭐ 초고속 섹터 판별 사전 (주요 110+ 종목 0ms 즉시 매핑 -> 미등록 종목만 yfinance 캐시 폴백)
+KNOWN_SECTORS = {
+    "NVDA": "Technology", "AMD": "Technology", "TSM": "Technology", "AVGO": "Technology",
+    "ARM": "Technology", "ASML": "Technology", "QCOM": "Technology", "MU": "Technology",
+    "INTC": "Technology", "MRVL": "Technology", "AMAT": "Technology", "LRCX": "Technology",
+    "KLAC": "Technology", "ON": "Technology", "NXPI": "Technology", "ADI": "Technology",
+    "MPWR": "Technology", "SMCI": "Technology", "AAPL": "Technology", "MSFT": "Technology",
+    "ORCL": "Technology", "PLTR": "Technology", "CRWD": "Technology", "PANW": "Technology",
+    "SNOW": "Technology", "PATH": "Technology", "AI": "Technology", "IONQ": "Technology",
+    "RGTI": "Technology", "QBTS": "Technology", "QUBT": "Technology", "APP": "Technology",
+    "MSTR": "Technology", "IREN": "Technology", "MARA": "Financial Services", "RIOT": "Financial Services",
+    "CLSK": "Financial Services", "CIFR": "Technology", "HUT": "Financial Services",
+    "BITF": "Financial Services", "CORZ": "Technology", "WULF": "Technology", "BTDR": "Technology",
+    "COIN": "Financial Services", "HOOD": "Financial Services", "SOFI": "Financial Services",
+    "UPST": "Financial Services", "AFRM": "Technology", "SQ": "Technology", "PYPL": "Financial Services",
+    "GOOGL": "Communication Services", "GOOG": "Communication Services", "META": "Communication Services",
+    "NFLX": "Communication Services", "DIS": "Communication Services", "RDDT": "Communication Services",
+    "RBLX": "Communication Services", "BILI": "Communication Services", "BIDU": "Communication Services",
+    "ASTS": "Communication Services",
+    "AMZN": "Consumer Cyclical", "TSLA": "Consumer Cyclical", "BABA": "Consumer Cyclical",
+    "PDD": "Consumer Cyclical", "JD": "Consumer Cyclical", "CPNG": "Consumer Cyclical",
+    "SHOP": "Technology", "SE": "Consumer Cyclical", "LCID": "Consumer Cyclical",
+    "RIVN": "Consumer Cyclical", "NIO": "Consumer Cyclical", "XPEV": "Consumer Cyclical",
+    "LI": "Consumer Cyclical", "F": "Consumer Cyclical", "GM": "Consumer Cyclical",
+    "TM": "Consumer Cyclical", "HMC": "Consumer Cyclical", "NKE": "Consumer Cyclical",
+    "LULU": "Consumer Cyclical", "SBUX": "Consumer Cyclical", "MCD": "Consumer Cyclical",
+    "DKNG": "Consumer Cyclical", "PENN": "Consumer Cyclical", "WYNN": "Consumer Cyclical",
+    "LVS": "Consumer Cyclical", "CCL": "Consumer Cyclical", "RCL": "Consumer Cyclical",
+    "NCLH": "Consumer Cyclical",
+    "KO": "Consumer Defensive", "PEP": "Consumer Defensive", "PG": "Consumer Defensive",
+    "WMT": "Consumer Defensive", "COST": "Consumer Defensive",
+    "LLY": "Healthcare", "UNH": "Healthcare", "JNJ": "Healthcare", "PFE": "Healthcare",
+    "MRK": "Healthcare", "ABBV": "Healthcare", "HIMS": "Healthcare", "NVO": "Healthcare",
+    "RKLB": "Industrials", "LUNR": "Industrials", "PL": "Industrials", "BKSY": "Industrials",
+    "SPIR": "Industrials", "BA": "Industrials", "RTX": "Industrials", "LMT": "Industrials",
+    "GD": "Industrials", "NOC": "Industrials", "UAL": "Industrials", "DAL": "Industrials",
+    "AAL": "Industrials", "LUV": "Industrials", "PLUG": "Industrials", "ENPH": "Technology",
+    "SEDG": "Technology", "FCEL": "Industrials", "CHPT": "Consumer Cyclical", "BLNK": "Consumer Cyclical",
+    "QS": "Consumer Cyclical",
+    "XOM": "Energy", "CVX": "Energy", "OXY": "Energy", "SLB": "Energy", "HAL": "Energy", "COP": "Energy",
+    "OPEN": "Real Estate",
+}
+
+CRYPTO_TICKERS = frozenset({
+    "MSTR", "COIN", "MARA", "RIOT", "CLSK", "IREN", "HUT", "BITF", "CORZ",
+    "WULF", "BTDR", "CIFR", "BITO", "IBIT", "FBTC", "HOOD", "CONL", "MSTU", "MSTX", "BITX",
+})
+
+SUPPLY_MAP = {
+    "Technology": ["TSM", "ASML", "AMAT", "LRCX", "KLAC"],
+    "Industrials": ["RTX", "LMT", "NOC", "GD", "BA"],
+    "Energy": ["XLE", "CVX", "XOM", "SLB", "COP"],
+    "Consumer Cyclical": ["TSLA", "GM", "F", "STLA", "HMC"],
+    "Healthcare": ["JNJ", "PFE", "MRK", "LLY", "ABBV"],
+    "Communication Services": ["META", "GOOGL", "NFLX", "DIS", "TMUS"],
+    "Financial Services": ["JPM", "GS", "MS", "BAC", "V"],
+}
+
+POLICY_CFG = {
+    "bull": (
+        "deregulation", "tax cut", "tax credit", "subsidy", "stimulus", "infrastructure bill",
+        "chips act", "inflation reduction act", "green energy bill", "defense budget increase",
+        "defense spending", "tariff exemption", "trade deal", "rate cut", "fed cut", "dovish",
+        "approved by congress", "bipartisan support", "funding bill passed", "ai regulation relaxed",
+        "crypto regulation clear", "bank charter approved", "space force funding", "solar tax credit",
+        "ev subsidy", "nuclear funding", "drug pricing reform eased", "doe loan",
+    ),
+    "bear": (
+        "antitrust", "monopoly", "doj lawsuit", "ftc investigation", "strict regulation",
+        "tariff", "trade war", "export ban", "sanctions", "china restriction", "entity list",
+        "drug pricing cap", "medicare negotiation", "price gouging", "windfall tax", "wealth tax",
+        "capital gains tax hike", "corporate tax hike", "rate hike", "hawkish", "fed hike",
+        "government shutdown", "debt ceiling", "recession risk", "defense budget cut", "pentagon cut",
+        "ai safety regulation strict", "crypto crackdown", "sec regulation", "section 230",
+        "tiktok ban", "media regulation", "student loan", "environmental regulation", "epa rule",
+    ),
+    "election": (
+        "presidential election", "trump", "biden", "harris", "vance", "midterm",
+        "republican win", "democrat win", "swing state", "electoral vote", "primary election",
+        "polling", "approval rating", "campaign", "debate",
+    ),
+    "sector": {
+        "Technology":             (("ai regulation relaxed", "chips act", "ai act", "sovereign ai"), ("antitrust", "section 230", "tariff", "export ban", "chip ban", "entity list")),
+        "Communication Services": (("media deregulation", "fcc approval"), ("section 230", "tiktok ban", "antitrust", "media regulation")),
+        "Healthcare":             (("fda reform", "drug pricing reform eased", "breakthrough therapy"), ("medicare negotiation", "drug pricing cap", "price gouging", "clinical hold")),
+        "Financial Services":     (("bank charter approved", "deregulation", "crypto regulation clear"), ("capital requirements", "basel iii", "dodd-frank", "fdic", "crypto crackdown")),
+        "Energy":                 (("drilling permit", "green energy bill", "ira", "lng permit"), ("climate regulation", "epa rule", "windfall tax")),
+        "Industrials":            (("infrastructure bill", "defense spending", "chips act", "space force funding", "pentagon contract"), ("tariff", "trade war", "defense budget cut", "pentagon cut")),
+        "Consumer Cyclical":      (("ev subsidy", "tax credit", "tariff exemption"), ("tariff", "consumer protection", "nhtsa probe")),
+        "Consumer Defensive":     (("food subsidy",), ("food regulation", "price cap", "tariff")),
+        "Basic Materials":        (("mining permit", "critical minerals"), ("tariff", "environmental regulation")),
+        "Real Estate":            (("rate cut", "housing subsidy"), ("rate hike", "housing policy", "mortgage")),
+        "Utilities":              (("green energy bill", "ira", "nuclear funding", "grid investment", "ppa"), ("epa rule", "climate regulation")),
+    },
+}
+
+
+@st.cache_data(ttl=86400)
+def _get_sector(ticker: str) -> str:
+    t = ticker.strip().upper()
+    if t in KNOWN_SECTORS:
+        return KNOWN_SECTORS[t]
+    if t in CFG["trail"]["leverage_etfs"] or t in _ETF_NO_EARNINGS:
+        return "ETF"
+    try:
+        info = yf.Ticker(t).info or {}
+        return str(info.get("sector") or "").strip()
+    except Exception:
+        return ""
+
+
+@st.cache_data(ttl=CFG["cache"]["policy"])
+def _fetch_policy_news() -> list:
+    items = []
+    query = (
+        "(president OR congress OR senate OR fed OR federal reserve OR antitrust OR regulation "
+        "OR tariff OR legislation OR election) stock market when:3d"
+    )
+    try:
+        url = f"https://news.google.com/rss/search?q={urllib.parse.quote(query)}&hl=en-US&gl=US&ceid=US:en"
+        r = requests.get(url, headers=BROWSER_HEADERS, timeout=5)
+        if r.status_code == 200 and r.content:
+            for el in ET.fromstring(r.content).findall('.//item')[:35]:
+                t_el, l_el, p_el = el.find('title'), el.find('link'), el.find('pubDate')
+                pub_dt = None
+                if p_el is not None and p_el.text:
+                    try:
+                        pub_dt = parsedate_to_datetime(p_el.text)
+                    except Exception:
+                        pass
+                if pub_dt is None:
+                    continue
+                age = _hours_since(pub_dt)
+                if age > 72:
+                    continue
+                items.append({
+                    "title": (t_el.text or "").strip() if t_el is not None else "",
+                    "link": (l_el.text or "#").strip() if l_el is not None else "#",
+                    "pub": pub_dt,
+                    "age": age,
+                })
+    except Exception as e:
+        LOG.debug("Policy RSS fetch failed: %s", e)
+    return items
+
+
+# ------------------------------------------------------------------------------
+# [Agent 1] Data Agent
+# ------------------------------------------------------------------------------
+def run_data_agent(ticker: str, hist: pd.DataFrame, rt_quote: dict) -> AgentReport:
+    if hist is None or hist.empty or len(hist) < 25:
+        return AgentReport("Data", 0, "DANGER", "차트 데이터 부족", {})
+    price = safe_float((rt_quote or {}).get("price"), safe_float(hist['Close'].iloc[-1]))
+    prev_close = safe_float((rt_quote or {}).get("prev_close"), safe_float(hist['Close'].iloc[-2], price))
+    if price <= 0:
+        return AgentReport("Data", 0, "DANGER", "시세 데이터 비정상 ($0)", {})
+    src = (rt_quote or {}).get("source", "Live Sync")
+    return AgentReport(
+        "Data",
+        25,
+        "GOOD",
+        f"${price:,.2f} ({src})",
+        {
+            "price": price,
+            "prev_close": prev_close,
+            "company_name": (rt_quote or {}).get("company_name", ""),
+            "source": src,
+            "ext_price": safe_float((rt_quote or {}).get("ext_price"), 0.0),
+            "ext_label": str((rt_quote or {}).get("ext_label") or ""),
+            "ext_change_pct": safe_float((rt_quote or {}).get("ext_change_pct"), 0.0),
+        },
+    )
+
+
+# ------------------------------------------------------------------------------
+# [Agent 2] Chart Agent
+# ------------------------------------------------------------------------------
+def run_chart_agent(
+    ticker: str,
+    current_price: float,
+    ema10: float,
+    ema20: float,
+    ema50: float,
+    ema200: float,
+    box_high: float,
+    box_low: float,
+    atr: float,
+    atr_pct: float,
+    rsi: float,
+    vol_ratio: float,
+) -> AgentReport:
+    score = 0
+    reasons = []
+    if current_price > ema20:
+        score += 20
+        reasons.append("20일선 상회")
+    else:
+        score -= 20
+        reasons.append("20일선 이탈")
+    if ema10 > ema20 > ema50:
+        score += 30
+        reasons.append("완벽 정배열")
+    elif ema10 < ema20 < ema50:
+        score -= 30
+        reasons.append("역배열")
+    if current_price >= box_high:
+        score += 20
+        reasons.append("20일 신고가 돌파")
+    if current_price < ema200:
+        score -= 15
+        reasons.append("200일선 이탈")
+    if rsi <= 30:
+        score += 15
+        reasons.append(f"과매도 RSI {rsi:.1f}")
+    elif rsi >= 70:
+        score -= 15
+        reasons.append(f"과열 RSI {rsi:.1f}")
+
+    score = max(-100, min(100, score))
+    if current_price < ema200 and rsi <= 30:
+        status = "DANGER"
+        summary = f"떨어지는 칼날 (RSI {rsi:.1f} · 200일선 하회)"
+    elif current_price < ema200:
+        status = "BEARISH"
+        summary = f"200일선 하회 (RSI {rsi:.1f})"
+    elif score >= 30:
+        status = "BULLISH"
+        summary = f"상승 추세 ({score:+d}점 · RSI {rsi:.1f})"
+    elif score <= -30:
+        status = "BEARISH"
+        summary = f"하락 추세 ({score:+d}점 · RSI {rsi:.1f})"
+    else:
+        status = "NEUTRAL"
+        summary = f"혼조/박스 ({score:+d}점 · RSI {rsi:.1f})"
+
+    return AgentReport(
+        "Chart",
+        score,
+        status,
+        summary,
+        {
+            "atr": atr,
+            "atr_pct": atr_pct,
+            "ema10": ema10,
+            "ema20": ema20,
+            "ema50": ema50,
+            "ema200": ema200,
+            "support": box_low,
+            "resistance": box_high,
+            "rsi": rsi,
+            "vol_ratio": vol_ratio,
+            "reasons": reasons,
+        },
+    )
+
+
+# ------------------------------------------------------------------------------
+# [Agent 3] Macro Agent
+# ------------------------------------------------------------------------------
+def run_macro_agent(indices: list, cat: dict = None) -> AgentReport:
+    idx = {i["name"]: i for i in (indices or [])}
+    vix = safe_float((idx.get("VIX 변동성") or {}).get("price"), 18.0)
+    if cat is not None:
+        raw_score = int(safe_float(cat.get("macro_score"), 0))
+        alerts = list(cat.get("macro_alerts") or [])
+    else:
+        raw_score = 0
+        alerts = []
+    # Scale macro_score (-40~+30 range) to (-100~+100) for Chief AI Manager
+    scaled_score = max(-100, min(100, int(round(raw_score * 2.2))))
+    if raw_score <= -25 or vix >= 25.0:
+        regime, status = "CRISIS", "DANGER"
+    elif raw_score <= -12 or vix >= 23.0:
+        regime, status = "BEAR", "BEARISH"
+    elif raw_score >= 12:
+        regime, status = "BULL", "BULLISH"
+    else:
+        regime, status = "NEUTRAL", "NEUTRAL"
+    return AgentReport(
+        "Macro",
+        scaled_score,
+        status,
+        f"[{regime}] 거시 {raw_score:+d}점 (VIX {vix:.1f})",
+        {"regime": regime, "raw_score": raw_score, "vix": vix, "alerts": alerts},
+    )
+
+
+# ------------------------------------------------------------------------------
+# [Agent 4] Master Agent (6대 대가 기법)
+# ------------------------------------------------------------------------------
+def run_master_agent(chart_r: AgentReport, pass_count: int, master_score_100: int, has_bad: bool = False) -> AgentReport:
+    if chart_r.status == "DANGER" and has_bad:
+        return AgentReport("Master", -80, "DANGER", "차트 붕괴 + 악재로 대가 기법 진입 차단", {"pass_count": pass_count, "master_score_100": master_score_100})
+    scaled = int(round(((pass_count - 3) / 3.0) * 100))
+    scaled = max(-100, min(100, scaled))
+    if pass_count >= 5:
+        status, summary = "BULLISH", f"👑 6대 대가 {pass_count}/6 통과 (강력 매수)"
+    elif pass_count >= 4:
+        status, summary = "BULLISH", f"👑 6대 대가 {pass_count}/6 통과 ({master_score_100}점)"
+    elif pass_count == 3:
+        status, summary = "NEUTRAL", f"👑 6대 대가 {pass_count}/6 통과 (관망)"
+    else:
+        status, summary = "BEARISH", f"👑 6대 대가 {pass_count}/6 통과 (부적합)"
+    return AgentReport(
+        "Master",
+        scaled,
+        status,
+        summary,
+        {"pass_count": pass_count, "master_score_100": master_score_100},
+    )
+
+
+# ------------------------------------------------------------------------------
+# [Agent 5] News & Earnings Agent
+# ------------------------------------------------------------------------------
+def run_news_agent_from_cat(cat: dict, recovery_bonus: int = 0, bull_fade_penalty: float = 0.0) -> AgentReport:
+    eff_cat = safe_float(cat.get("catalyst_score"), 0.0) - bull_fade_penalty + recovery_bonus
+    score = max(-100, min(100, int(round(eff_cat * 2.5))))
+    sev_cnt = int(cat.get("severe_bad_hits", 0))
+    bad_cnt = int(cat.get("bad_news_hits", 0))
+    bull_cnt = int(cat.get("contract_hits", 0)) + int(cat.get("earnings_bull_hits", 0))
+    has_bad = (sev_cnt >= 1 or bad_cnt >= 2) and recovery_bonus == 0
+
+    if has_bad:
+        status = "DANGER"
+        summary = f"🚨 중대/최신 악재 {bad_cnt}건 (매수 차단)"
+    elif score >= 20 or bull_cnt >= 1:
+        status = "BULLISH"
+        summary = f"🤝 최신 호재 {bull_cnt}건 ({eff_cat:+.1f}점)"
+    elif score <= -20 or bad_cnt >= 1:
+        status = "BEARISH"
+        summary = f"⚠️ 주의 뉴스 {bad_cnt}건 ({eff_cat:+.1f}점)"
+    else:
+        status = "NEUTRAL"
+        summary = "📰 최근 48h 특이 호악재 없음"
+
+    return AgentReport(
+        "News",
+        score,
+        status,
+        summary,
+        {
+            "bad_cnt": bad_cnt,
+            "severe_cnt": sev_cnt,
+            "bull_cnt": bull_cnt,
+            "recovery_bonus": recovery_bonus,
+            "earnings_info": cat.get("earnings_info", ""),
+            "news_items": cat.get("news_items", []),
+        },
+    )
+
+
+# ------------------------------------------------------------------------------
+# [Agent 6] Policy Agent (정치/법안/규제/선거/관세 전담팀)
+# ------------------------------------------------------------------------------
+def run_policy_agent(ticker: str, raw_ticker_news: list = None) -> AgentReport:
+    try:
+        sector = _get_sector(ticker)
+        news = list(_fetch_policy_news() or [])
+        # 종목 개별 뉴스 중 정책·규제·관세 관련 헤드라인도 함께 병합 검사
+        if raw_ticker_news:
+            for item in raw_ticker_news[:15]:
+                news.append({
+                    "title": str(item.get("raw_title") or ""),
+                    "link": str(item.get("raw_link") or "#"),
+                    "pub": item.get("pub_dt"),
+                    "age": safe_float(item.get("age_h"), 24.0),
+                })
+
+        if not news:
+            return AgentReport("Policy", 0, "NEUTRAL", f"정책 중립 ({sector or '일반'})", {"sector": sector, "matched": []})
+
+        sector_bull_kws, sector_bear_kws = (), ()
+        if sector in POLICY_CFG["sector"]:
+            sector_bull_kws, sector_bear_kws = POLICY_CFG["sector"][sector]
+
+        score = 0.0
+        bull_cnt, bear_cnt, election_cnt, crisis_cnt = 0, 0, 0, 0
+        matched = []
+        seen_p = set()
+        crisis_kws = (
+            "trade war", "tariff hike", "export ban", "chip ban", "antitrust lawsuit",
+            "government shutdown", "debt ceiling default", "entity list", "sanctions",
+        )
+
+        for item in news:
+            raw_t = str(item.get("title") or "").strip()
+            if not raw_t:
+                continue
+            norm_k = _normalize_title(raw_t)
+            if norm_k in seen_p:
+                continue
+            tl = raw_t.lower()
+            age = safe_float(item.get("age"), 24.0)
+            w = 1.15 if age <= 24 else (1.0 if age <= 48 else 0.75)
+
+            is_bull = _any_kw(tl, POLICY_CFG["bull"]) or _any_kw(tl, sector_bull_kws)
+            is_bear = _any_kw(tl, POLICY_CFG["bear"]) or _any_kw(tl, sector_bear_kws)
+            is_election = _any_kw(tl, POLICY_CFG["election"])
+            is_crisis = _any_kw(tl, crisis_kws)
+
+            if is_bull and not is_bear:
+                seen_p.add(norm_k)
+                score += 6.0 * w
+                bull_cnt += 1
+                matched.append({"title": html.escape(raw_t), "link": safe_url(item.get("link", "#")), "sentiment": "🟢 정책호재", "age": age})
+            elif is_bear and not is_bull:
+                seen_p.add(norm_k)
+                score -= 6.0 * w
+                bear_cnt += 1
+                matched.append({"title": html.escape(raw_t), "link": safe_url(item.get("link", "#")), "sentiment": "🔴 정책악재", "age": age})
+                if is_crisis:
+                    crisis_cnt += 1
+            elif is_election:
+                seen_p.add(norm_k)
+                election_cnt += 1
+                matched.append({"title": html.escape(raw_t), "link": safe_url(item.get("link", "#")), "sentiment": "🗳️ 선거이슈", "age": age})
+
+        score_int = max(-100, min(100, int(round(score))))
+        sec_label = sector or "글로벌"
+        if crisis_cnt >= 2 and bear_cnt >= 4 and score_int <= -20:
+            status = "DANGER"
+            summary = f"🚨 정책 리스크 경보 (악재 {bear_cnt}건 · {sec_label})"
+        elif score_int >= 12:
+            status = "BULLISH"
+            summary = f"🏛️ 정책 호재 우위 (호재 {bull_cnt}건 · {sec_label})"
+        elif score_int <= -12:
+            status = "BEARISH"
+            summary = f"🏛️ 정책 역풍 주의 (악재 {bear_cnt}건 · {sec_label})"
+        else:
+            status = "NEUTRAL"
+            summary = f"🏛️ 정책 중립 ({sec_label} · 호재 {bull_cnt}/악재 {bear_cnt})"
+
+        return AgentReport(
+            "Policy",
+            score_int,
+            status,
+            summary,
+            {
+                "sector": sector,
+                "bull_cnt": bull_cnt,
+                "bear_cnt": bear_cnt,
+                "election_cnt": election_cnt,
+                "crisis_cnt": crisis_cnt,
+                "matched": matched[:8],
+            },
+        )
+    except Exception as e:
+        LOG.debug("Policy agent error for %s: %s", ticker, e)
+        return AgentReport("Policy", 0, "NEUTRAL", "🏛️ 정책 중립", {"sector": "", "matched": []})
+
+
+# ------------------------------------------------------------------------------
+# [Agent 7] Options Flow Agent (옵션 흐름/감마/이상 콜·풋 거래 전담)
+# ------------------------------------------------------------------------------
+@st.cache_data(ttl=CFG["cache"]["options_flow"])
+def _get_options_flow_data(ticker: str) -> dict:
+    t = ticker.strip().upper()
+    if not t or any(c in t for c in ("^", "=", "-")):
+        return {}
+    try:
+        stock = yf.Ticker(t)
+        exps = stock.options
+        if not exps:
+            return {}
+        ny_today = _ny_today_date()
+        valid = []
+        for e in exps[:5]:
+            try:
+                if (datetime.strptime(e, "%Y-%m-%d").date() - ny_today).days >= 2:
+                    valid.append(e)
+            except Exception:
+                pass
+        target = valid[0] if valid else exps[0]
+        chain = stock.option_chain(target)
+        calls, puts = chain.calls, chain.puts
+        if (calls is None or calls.empty) and (puts is None or puts.empty):
+            return {}
+
+        c_vol = calls['volume'].fillna(0) if 'volume' in calls.columns else pd.Series(dtype="float64")
+        p_vol = puts['volume'].fillna(0) if 'volume' in puts.columns else pd.Series(dtype="float64")
+        c_oi = calls['openInterest'].fillna(0) if 'openInterest' in calls.columns else pd.Series(dtype="float64")
+        p_oi = puts['openInterest'].fillna(0) if 'openInterest' in puts.columns else pd.Series(dtype="float64")
+
+        cv = safe_float(c_vol.sum(), 0.0)
+        pv = safe_float(p_vol.sum(), 0.0)
+        coi = safe_float(c_oi.sum(), 0.0)
+        poi = safe_float(p_oi.sum(), 0.0)
+
+        cavg = safe_float(c_vol.mean(), 0.0)
+        pavg = safe_float(p_vol.mean(), 0.0)
+        uc = int((c_vol >= max(50.0, cavg * 3.0)).sum()) if cavg > 0 else 0
+        up = int((p_vol >= max(50.0, pavg * 3.0)).sum()) if pavg > 0 else 0
+
+        return {
+            "expiry": target,
+            "call_vol": int(cv),
+            "put_vol": int(pv),
+            "call_oi": int(coi),
+            "put_oi": int(poi),
+            "pc_vol_ratio": round(pv / cv, 2) if cv > 0 else 1.0,
+            "pc_oi_ratio": round(poi / coi, 2) if coi > 0 else 1.0,
+            "unusual_calls": uc,
+            "unusual_puts": up,
+        }
+    except Exception:
+        return {}
+
+
+def run_options_agent(ticker: str, current_price: float, gex_data: dict = None) -> AgentReport:
+    flow = _get_options_flow_data(ticker)
+    gex = gex_data or {}
+    if not flow and not gex.get("call_wall"):
+        return AgentReport("Options", 0, "NEUTRAL", "옵션 데이터 없음 (기본 추세 모드)", {})
+
+    pcv = safe_float(flow.get("pc_vol_ratio"), 1.0)
+    uc = int(flow.get("unusual_calls", 0))
+    up = int(flow.get("unusual_puts", 0))
+    mp = safe_float(gex.get("max_pain"), 0.0)
+    cw = safe_float(gex.get("call_wall"), 0.0)
+    pw = safe_float(gex.get("put_wall"), 0.0)
+
+    score, reasons = 0, []
+    if pcv < 0.65:
+        score += 20
+        reasons.append(f"콜 거래 우위 (P/C {pcv:.2f})")
+    elif pcv > 1.45:
+        score -= 20
+        reasons.append(f"풋 거래 우위 (P/C {pcv:.2f})")
+    if uc >= 3:
+        score += 15
+        reasons.append(f"이상 콜 스윕 {uc}건")
+    if up >= 3:
+        score -= 15
+        reasons.append(f"이상 풋 스윕 {up}건")
+
+    if mp > 0 and current_price > 0:
+        dist = ((current_price - mp) / current_price) * 100.0
+        if dist > 6.0:
+            score -= 10
+            reasons.append(f"맥스페인(${mp:,.1f}) 하방 자석")
+        elif dist < -6.0:
+            score += 10
+            reasons.append(f"맥스페인(${mp:,.1f}) 상방 자석")
+
+    if gex.get("is_gamma_squeeze_zone"):
+        score += 20
+        reasons.append("감마스퀴즈 점화 구간")
+
+    score = max(-100, min(100, score))
+    if up >= 5 and pcv >= 1.35:
+        status, summary = "DANGER", f"🚨 대량 풋 베팅 포착 ({up}건 · P/C {pcv:.2f})"
+    elif score >= 20:
+        status, summary = "BULLISH", f"🔥 콜 옵션 수급 우위 (P/C {pcv:.2f} · 이상콜 {uc}건)"
+    elif score <= -20:
+        status, summary = "BEARISH", f"⚠️ 풋 옵션 쏠림 (P/C {pcv:.2f} · 이상풋 {up}건)"
+    else:
+        status, summary = "NEUTRAL", f"💹 옵션 중립 (P/C {pcv:.2f} · 이상콜 {uc}/풋 {up})"
+
+    details = dict(flow)
+    details.update({
+        "call_wall": cw,
+        "put_wall": pw,
+        "max_pain": mp,
+        "reasons": reasons,
+    })
+    return AgentReport("Options", score, status, summary, details)
+
+
+# ------------------------------------------------------------------------------
+# [Agent 8] Onchain Agent (크립토 온체인 BTC/ETH 전담)
+# ------------------------------------------------------------------------------
+@st.cache_data(ttl=CFG["cache"]["onchain"])
+def _fetch_crypto_onchain() -> dict:
+    out = {}
+    for sym, name, yh_sym in [("BTCUSDT", "BTC", "BTC-USD"), ("ETHUSDT", "ETH", "ETH-USD")]:
+        try:
+            r = requests.get(f"https://api.binance.com/api/v3/ticker/24hr?symbol={sym}", timeout=4)
+            if r.status_code == 200:
+                j = r.json()
+                px = safe_float(j.get("lastPrice"), 0.0)
+                if px > 0:
+                    out[name] = {
+                        "price": px,
+                        "change": safe_float(j.get("priceChangePercent"), 0.0),
+                        "volume": safe_float(j.get("quoteVolume"), 0.0),
+                    }
+                    continue
+        except Exception:
+            pass
+        q = get_realtime_quote(yh_sym)
+        if q.get("price", 0.0) > 0:
+            out[name] = {
+                "price": safe_float(q.get("price"), 0.0),
+                "change": safe_float(q.get("change_pct"), 0.0),
+                "volume": safe_float(q.get("volume"), 0.0),
+            }
+    return out
+
+
+def run_onchain_agent(ticker: str) -> AgentReport:
+    t = ticker.strip().upper()
+    if t not in CRYPTO_TICKERS:
+        return AgentReport("Onchain", 0, "NEUTRAL", "비크립토 종목 (가중치 자동 제외)", {"applicable": False})
+    data = _fetch_crypto_onchain()
+    if not data or "BTC" not in data:
+        return AgentReport("Onchain", 0, "NEUTRAL", "온체인 시세 대기", {"applicable": True})
+
+    btc = data["BTC"]
+    eth = data.get("ETH", {"change": 0.0, "price": 0.0, "volume": 0.0})
+    btc_chg, eth_chg = safe_float(btc.get("change")), safe_float(eth.get("change"))
+    score, reasons = 0, []
+    if btc_chg >= 3.0:
+        score += 30
+        reasons.append(f"BTC 강세 ({btc_chg:+.1f}%)")
+    elif btc_chg >= 1.0:
+        score += 15
+        reasons.append(f"BTC 완만한 상승 ({btc_chg:+.1f}%)")
+    elif btc_chg <= -3.0:
+        score -= 30
+        reasons.append(f"BTC 급락 ({btc_chg:+.1f}%)")
+    elif btc_chg <= -1.0:
+        score -= 15
+        reasons.append(f"BTC 약세 ({btc_chg:+.1f}%)")
+
+    diff = eth_chg - btc_chg
+    if diff >= 2.0:
+        score += 10
+        reasons.append(f"ETH 상대강세 ({diff:+.1f}%p)")
+    elif diff <= -2.0:
+        score -= 10
+        reasons.append(f"ETH 상대약세 ({diff:+.1f}%p)")
+
+    if safe_float(btc.get("volume")) > 0:
+        reasons.append(f"BTC 24h 거래대금 ${btc['volume']/1e9:.1f}B")
+
+    score = max(-100, min(100, score))
+    if btc_chg <= -8.0:
+        status, summary = "DANGER", f"🚨 BTC 급락 경보 ({btc_chg:+.1f}%)"
+    elif score >= 20:
+        status, summary = "BULLISH", f"⛓️ 크립토 온체인 강세 (BTC {btc_chg:+.1f}%)"
+    elif score <= -20:
+        status, summary = "BEARISH", f"⛓️ 크립토 온체인 약세 (BTC {btc_chg:+.1f}%)"
+    else:
+        status, summary = "NEUTRAL", f"⛓️ BTC {btc_chg:+.1f}% / ETH {eth_chg:+.1f}%"
+
+    return AgentReport(
+        "Onchain",
+        score,
+        status,
+        summary,
+        {
+            "applicable": True,
+            "btc_price": btc.get("price", 0.0),
+            "btc_change": btc_chg,
+            "btc_volume": btc.get("volume", 0.0),
+            "eth_price": eth.get("price", 0.0),
+            "eth_change": eth_chg,
+            "reasons": reasons,
+        },
+    )
+
+
+# ------------------------------------------------------------------------------
+# [Agent 9] Supply Chain Agent (섹터별 공급망 동반 종목 추적)
+# ------------------------------------------------------------------------------
+@st.cache_data(ttl=CFG["cache"]["supply"])
+def _fetch_supply_basket(sector: str, exclude_ticker: str = "") -> dict:
+    peers = [p for p in SUPPLY_MAP.get(sector, []) if p != exclude_ticker.upper()]
+    if not peers:
+        return {}
+    changes = []
+    with ThreadPoolExecutor(max_workers=min(5, len(peers))) as ex:
+        fut_map = {ex.submit(get_realtime_quote, p): p for p in peers}
+        for fut in as_completed(fut_map):
+            p = fut_map[fut]
+            try:
+                q = fut.result() or {}
+                if safe_float(q.get("price"), 0.0) > 0:
+                    changes.append((p, round(safe_float(q.get("change_pct"), 0.0), 2)))
+            except Exception:
+                pass
+    if not changes:
+        return {}
+    changes.sort(key=lambda x: peers.index(x[0]) if x[0] in peers else 99)
+    avg = sum(c for _, c in changes) / len(changes)
+    return {"sector": sector, "avg_change": round(avg, 2), "peers": changes, "count": len(changes)}
+
+
+def run_supply_agent(ticker: str, sector: str = "") -> AgentReport:
+    sec = sector or _get_sector(ticker)
+    if not sec or sec not in SUPPLY_MAP:
+        return AgentReport("Supply", 0, "NEUTRAL", f"공급망 비대상 ({sec or '일반'})", {"applicable": False})
+    data = _fetch_supply_basket(sec, exclude_ticker=ticker)
+    if not data:
+        return AgentReport("Supply", 0, "NEUTRAL", f"{sec} 공급망 보합", {"applicable": False})
+
+    avg = safe_float(data.get("avg_change"), 0.0)
+    score = int(round(np.clip(avg * 12.0, -100.0, 100.0)))
+    if avg <= -4.0:
+        status, summary = "DANGER", f"🚨 {sec} 공급망 급락 ({avg:+.1f}%)"
+    elif avg >= 1.5:
+        status, summary = "BULLISH", f"🏭 {sec} 공급망 순풍 ({avg:+.1f}%)"
+    elif avg <= -1.5:
+        status, summary = "BEARISH", f"🏭 {sec} 공급망 역풍 ({avg:+.1f}%)"
+    else:
+        status, summary = "NEUTRAL", f"🏭 {sec} 공급망 보합 ({avg:+.1f}%)"
+
+    return AgentReport(
+        "Supply",
+        score,
+        status,
+        summary,
+        {
+            "applicable": True,
+            "sector": sec,
+            "avg_change": avg,
+            "peers": data.get("peers", []),
+        },
+    )
+
+
+# ------------------------------------------------------------------------------
+# [Agent 10] Squeeze Agent (숏스퀴즈 + 감마스퀴즈 통합 전담)
+# ------------------------------------------------------------------------------
+def run_squeeze_agent_from_eval(squeeze_eval: dict, short_data: dict, gex_data: dict) -> AgentReport:
+    sq_score = int(squeeze_eval.get("sq_score", 0))
+    if sq_score >= 70:
+        status = "BULLISH"
+        summary = f"🌋 더블 스퀴즈 경보 ({sq_score}/100점)"
+    elif sq_score >= 40:
+        status = "BULLISH"
+        summary = f"⚡ 스퀴즈 잠재력 우수 ({sq_score}/100점)"
+    else:
+        status = "NEUTRAL"
+        summary = f"⚖️ 일반 수급 ({sq_score}/100점)"
+    return AgentReport(
+        "Squeeze",
+        sq_score,
+        status,
+        summary,
+        {
+            "sq_score": sq_score,
+            "grade": squeeze_eval.get("grade", ""),
+            "badge": squeeze_eval.get("badge", "badge-blue"),
+            "guide": squeeze_eval.get("guide", ""),
+            "reasons": squeeze_eval.get("reasons", []),
+            "short_data": short_data,
+            "gamma_data": gex_data,
+        },
+    )
+
+
+# ------------------------------------------------------------------------------
+# [Agent 11] Insider Agent (SEC Form 4 내부자 거래 전담)
+# ------------------------------------------------------------------------------
+@st.cache_data(ttl=CFG["cache"]["insider"])
+def run_insider_agent(ticker: str) -> AgentReport:
+    t = ticker.strip().upper()
+    if not t or any(c in t for c in ("^", "=", "-")) or t in CFG["trail"]["leverage_etfs"] or t in _ETF_NO_EARNINGS:
+        return AgentReport("Insider", 0, "NEUTRAL", "ETF/지수 (내부자 공시 제외)", {})
+
+    buys, sells = [], []
+    cutoff = datetime.now() - timedelta(days=90)
+
+    # 1차: Finnhub Insider Transactions API (키 설정 시 초고속)
+    if FINNHUB_KEY:
+        try:
+            u_in = f"https://finnhub.io/api/v1/stock/insider-transactions?symbol={urllib.parse.quote(t)}&token={FINNHUB_KEY}"
+            r_in = requests.get(u_in, headers=BROWSER_HEADERS, timeout=4)
+            if r_in.status_code == 200:
+                rows_in = (r_in.json() or {}).get("data") or []
+                for rw in rows_in[:40]:
+                    dt_s = str(rw.get("transactionDate") or "")[:10]
+                    try:
+                        if datetime.strptime(dt_s, "%Y-%m-%d") < cutoff:
+                            continue
+                    except Exception:
+                        pass
+                    code = str(rw.get("transactionCode") or "").upper()
+                    chg_sh = safe_float(rw.get("change"), 0.0)
+                    px_sh = safe_float(rw.get("transactionPrice"), 0.0)
+                    val_usd = abs(chg_sh * px_sh)
+                    nm = str(rw.get("name") or "").strip()
+                    if code == "P" and chg_sh > 0:
+                        buys.append({"name": nm, "pos": "INSIDER", "shares": abs(chg_sh), "value": val_usd, "date": dt_s})
+                    elif code == "S" and chg_sh < 0:
+                        sells.append({"name": nm, "pos": "INSIDER", "shares": abs(chg_sh), "value": val_usd, "date": dt_s})
+        except Exception:
+            pass
+
+    # 2차: yfinance insider_transactions
+    if not buys and not sells:
+        try:
+            stock = yf.Ticker(t)
+            insider = stock.insider_transactions
+            if insider is not None and hasattr(insider, "empty") and not insider.empty:
+                try:
+                    if "Start Date" in insider.columns:
+                        recent = insider[pd.to_datetime(insider["Start Date"], errors="coerce") >= cutoff]
+                    else:
+                        recent = insider
+                except Exception:
+                    recent = insider
+                if recent is not None and not recent.empty:
+                    for _, row in recent.iterrows():
+                        txn = str(row.get("Transaction", "") or row.get("Text", "")).lower().strip()
+                        shares = safe_float(row.get("Shares", 0))
+                        value = safe_float(row.get("Value", 0))
+                        insider_name = str(row.get("Insider", "")).strip()
+                        pos = str(row.get("Position", "")).strip().upper()
+                        date_s = str(row.get("Start Date", ""))[:10]
+                        if any(k in txn for k in ("buy", "purchase", "acquire")):
+                            buys.append({"name": insider_name, "pos": pos, "shares": shares, "value": value, "date": date_s})
+                        elif any(k in txn for k in ("sale", "sell", "disposition")):
+                            txn_clean = txn.replace(" ", "")
+                            if "sale+oe" not in txn_clean and "tax" not in txn_clean:
+                                sells.append({"name": insider_name, "pos": pos, "shares": shares, "value": value, "date": date_s})
+        except Exception as e:
+            LOG.debug("Insider fetch skipped for %s: %s", t, e)
+
+    buy_cnt, sell_cnt = len(buys), len(sells)
+    buy_val = sum(safe_float(b.get("value", 0)) for b in buys)
+    sell_val = sum(safe_float(s.get("value", 0)) for s in sells)
+    ceo_cfo_buys = [b for b in buys if any(k in b.get("pos", "") for k in ("CEO", "CFO", "CHIEF", "DIRECTOR", "OFFICER"))]
+
+    if buy_cnt == 0 and sell_cnt == 0:
+        return AgentReport("Insider", 0, "NEUTRAL", "최근 90일 특이 내부자 매매 없음", {"buy_cnt": 0, "sell_cnt": 0, "reasons": ["최근 90일 Form 4 특이 장내 매매 없음"]})
+
+    score, reasons = 0, []
+    if buy_cnt >= 3 and sell_cnt == 0:
+        score = 40
+        reasons.append(f"🔥 내부자 연속 순매수 ({buy_cnt}건 · ${buy_val/1e6:.2f}M)")
+    elif buy_cnt >= 2 and buy_cnt > sell_cnt * 2:
+        score = 25
+        reasons.append(f"🟢 내부자 순매수 우위 (매수 {buy_cnt}건 vs 매도 {sell_cnt}건)")
+    elif buy_cnt >= 1 and sell_cnt == 0:
+        score = 15
+        reasons.append(f"🟢 내부자 장내 매수 ({buy_cnt}건)")
+    elif sell_cnt >= 6 and buy_cnt == 0 and sell_val >= 5e6:
+        score = -50
+        reasons.append(f"🚨 내부자 집중 매도 ({sell_cnt}건 · ${sell_val/1e6:.1f}M)")
+    elif sell_cnt >= 3:
+        score = -25
+        reasons.append(f"🔴 내부자 매도 우위 ({sell_cnt}건 · ${sell_val/1e6:.1f}M)")
+    elif sell_cnt >= 1:
+        score = -10
+        reasons.append(f"🟠 내부자 매도 ({sell_cnt}건)")
+
+    if ceo_cfo_buys:
+        score = min(100, score + 20)
+        reasons.append(f"👑 핵심 임원(CEO/CFO/이사) 매수 {len(ceo_cfo_buys)}건")
+
+    score = max(-100, min(100, score))
+    if score <= -50:
+        status, summary = "DANGER", f"🚨 내부자 대량 매도 ({sell_cnt}건 · ${sell_val/1e6:.1f}M)"
+    elif score <= -20:
+        status, summary = "BEARISH", f"🔴 내부자 매도 우위 (매도 {sell_cnt}건)"
+    elif score >= 20:
+        status, summary = "BULLISH", f"🟢 내부자 매수 포착 (매수 {buy_cnt}건)"
+    else:
+        status, summary = "NEUTRAL", f"🔬 내부자 매수 {buy_cnt}건 / 매도 {sell_cnt}건"
+
+    return AgentReport(
+        "Insider",
+        score,
+        status,
+        summary,
+        {
+            "buy_cnt": buy_cnt,
+            "sell_cnt": sell_cnt,
+            "buy_value": buy_val,
+            "sell_value": sell_val,
+            "ceo_cfo_buys": len(ceo_cfo_buys),
+            "top_buys": buys[:4],
+            "top_sells": sells[:4],
+            "reasons": reasons,
+        },
+    )
+
+
+# ------------------------------------------------------------------------------
+# [Agent 12] Institutional Agent (13F 메이저 기관 보유 전담)
+# ------------------------------------------------------------------------------
+@st.cache_data(ttl=CFG["cache"]["institutional"])
+def run_institutional_agent(ticker: str) -> AgentReport:
+    t = ticker.strip().upper()
+    if not t or any(c in t for c in ("^", "=", "-")) or t in CFG["trail"]["leverage_etfs"] or t in _ETF_NO_EARNINGS:
+        return AgentReport("Institutional", 0, "NEUTRAL", "ETF/지수 (13F 기관 집계 제외)", {})
+    try:
+        stock = yf.Ticker(t)
+        inst = stock.institutional_holders
+        if inst is None or (hasattr(inst, "empty") and inst.empty):
+            return AgentReport("Institutional", 0, "NEUTRAL", "13F 기관 데이터 미제공/소형주", {})
+
+        pct_col = None
+        for c in ("% Out", "pctHeld", "pct_held", "Pct Held"):
+            if c in inst.columns:
+                pct_col = c
+                break
+
+        holders = []
+        total_pct = 0.0
+        for _, row in inst.iterrows():
+            holder = str(row.get("Holder", "")).strip()
+            if not holder:
+                continue
+            shares = safe_float(row.get("Shares", 0))
+            value = safe_float(row.get("Value", 0))
+            pct = 0.0
+            if pct_col:
+                raw = row.get(pct_col, 0)
+                if isinstance(raw, str):
+                    pct = safe_float(raw.replace("%", "").strip())
+                else:
+                    pct = safe_float(raw)
+                    if 0 < pct <= 1.0:
+                        pct *= 100.0
+            total_pct += pct
+            holders.append({"holder": holder, "shares": shares, "pct": round(pct, 2), "value": value})
+
+        total_pct = min(100.0, round(total_pct, 2))
+        major_kw = {
+            "blackrock", "vanguard", "state street", "fidelity", "jpmorgan",
+            "goldman", "morgan stanley", "bank of america", "wells fargo", "geode", "citadel",
+        }
+        has_major = any(any(m in h["holder"].lower() for m in major_kw) for h in holders[:10])
+
+        score, reasons = 0, []
+        if total_pct >= 60:
+            score = 25
+            reasons.append(f"🏦 상위 기관 지분율 우수 ({total_pct:.1f}%)")
+        elif total_pct >= 35:
+            score = 15
+            reasons.append(f"🏦 상위 기관 보유 양호 ({total_pct:.1f}%)")
+        elif total_pct >= 15:
+            score = 5
+            reasons.append(f"🏦 상위 기관 보유 적정 ({total_pct:.1f}%)")
+        else:
+            score = -5
+            reasons.append(f"⚠️ 상위 기관 지분율 낮음 ({total_pct:.1f}%)")
+
+        if has_major:
+            score += 10
+            reasons.append("🎯 블랙록·뱅가드 등 메이저 기관 편입")
+
+        score = max(-100, min(100, score))
+        if score >= 25:
+            status, summary = "BULLISH", f"🏦 메이저 기관 편입 (상위10 합계 {total_pct:.1f}%)"
+        elif score <= -10:
+            status, summary = "BEARISH", f"⚠️ 기관 지분율 낮음 ({total_pct:.1f}%)"
+        else:
+            status, summary = "NEUTRAL", f"🏦 상위 기관 {total_pct:.1f}% ({len(holders)}개사)"
+
+        return AgentReport(
+            "Institutional",
+            score,
+            status,
+            summary,
+            {
+                "total_pct": total_pct,
+                "holder_cnt": len(holders),
+                "top_holders": holders[:5],
+                "has_major": has_major,
+                "reasons": reasons,
+            },
+        )
+    except Exception as e:
+        LOG.debug("Institutional agent skipped for %s: %s", t, e)
+        return AgentReport("Institutional", 0, "NEUTRAL", "🏦 기관 데이터 기본 모드", {})
+
+
+# ------------------------------------------------------------------------------
+# [Agent 13] Chief AI Manager (12개 팀 통합 & 8단계 Veto 컨트롤 타워)
+# ------------------------------------------------------------------------------
+def run_chief_manager(
+    ticker: str,
+    current_price: float,
+    data_r: AgentReport,
+    chart_r: AgentReport,
+    macro_r: AgentReport,
+    master_r: AgentReport,
+    news_r: AgentReport,
+    policy_r: AgentReport,
+    options_r: AgentReport,
+    onchain_r: AgentReport,
+    supply_r: AgentReport,
+    squeeze_r: AgentReport,
+    insider_r: AgentReport,
+    institutional_r: AgentReport,
+) -> ChiefDecision:
+    regime = macro_r.details.get("regime", "NEUTRAL")
+    base_weights = {
+        "BULL":    {"chart": 0.18, "master": 0.16, "news": 0.12, "macro": 0.08, "policy": 0.08,
+                    "options": 0.08, "onchain": 0.00, "supply": 0.08, "squeeze": 0.15,
+                    "insider": 0.04, "institutional": 0.03},
+        "BEAR":    {"chart": 0.10, "master": 0.06, "news": 0.18, "macro": 0.15, "policy": 0.12,
+                    "options": 0.05, "onchain": 0.00, "supply": 0.08, "squeeze": 0.13,
+                    "insider": 0.08, "institutional": 0.05},
+        "NEUTRAL": {"chart": 0.13, "master": 0.10, "news": 0.15, "macro": 0.10, "policy": 0.08,
+                    "options": 0.08, "onchain": 0.00, "supply": 0.08, "squeeze": 0.15,
+                    "insider": 0.08, "institutional": 0.05},
+        "CRISIS":  {"chart": 0.06, "master": 0.00, "news": 0.22, "macro": 0.18, "policy": 0.15,
+                    "options": 0.05, "onchain": 0.00, "supply": 0.08, "squeeze": 0.12,
+                    "insider": 0.08, "institutional": 0.06},
+    }
+    weights = dict(base_weights.get(regime, base_weights["NEUTRAL"]))
+
+    # 온체인: 크립토 종목일 때만 15% 활성화
+    if onchain_r.details.get("applicable"):
+        total_others = sum(v for k, v in weights.items() if k != "onchain" and v > 0)
+        if total_others > 0:
+            for k in weights:
+                if k != "onchain" and weights[k] > 0:
+                    weights[k] = weights[k] * 0.85 / total_others
+        weights["onchain"] = 0.15
+
+    # 공급망: 미적용 섹터는 가중치 0으로 제외 후 정규화
+    if not supply_r.details.get("applicable"):
+        weights["supply"] = 0.0
+
+    total_w = sum(weights.values())
+    if total_w > 0:
+        weights = {k: v / total_w for k, v in weights.items()}
+
+    # Squeeze score는 0~100 범위이므로 -20~+100 범위로 매핑하여 반영
+    sq_norm = (squeeze_r.score - 25.0) * 1.33
+    total = round(
+        max(
+            -100.0,
+            min(
+                100.0,
+                chart_r.score * weights["chart"]
+                + master_r.score * weights["master"]
+                + news_r.score * weights["news"]
+                + macro_r.score * weights["macro"]
+                + policy_r.score * weights["policy"]
+                + options_r.score * weights["options"]
+                + onchain_r.score * weights["onchain"]
+                + supply_r.score * weights["supply"]
+                + sq_norm * weights["squeeze"]
+                + insider_r.score * weights["insider"]
+                + institutional_r.score * weights["institutional"],
+            ),
+        ),
+        1,
+    )
+
+    agent_reports = [
+        data_r, chart_r, macro_r, master_r, news_r, policy_r,
+        options_r, onchain_r, supply_r, squeeze_r, insider_r, institutional_r,
+    ]
+
+    atr = safe_float(chart_r.details.get("atr"), current_price * 0.04)
+    support = safe_float(chart_r.details.get("support"), current_price * 0.95)
+    ema200 = safe_float(chart_r.details.get("ema200"), 0.0)
+    sl_mult = 3.0 if regime == "BULL" else (1.0 if regime == "CRISIS" else 2.0)
+    stop_loss = max(current_price - (atr * sl_mult), support * 0.98)
+    target_1 = current_price + (atr * (5.0 if regime == "BULL" else 3.0))
+    target_2 = current_price + (atr * (8.0 if regime == "BULL" else 5.0))
+
+    # ===== 8단계 기관급 Veto (거부권) 우선순위 =====
+    veto_Checks = [
+        (data_r.status == "DANGER", "Veto #1 [Data]", f"데이터 오류: {data_r.summary}", "🚨 데이터 오류"),
+        (news_r.status == "DANGER", "Veto #2 [News]", f"치명적 뉴스 악재: {news_r.summary}", "🚨 악재 투매 경보"),
+        (policy_r.status == "DANGER", "Veto #3 [Policy]", f"정책/규제 경보: {policy_r.summary}", "🏛️ 정책 리스크 경보"),
+        (options_r.status == "DANGER" and regime in ("BEAR", "CRISIS"), "Veto #4 [Options]", f"약세장 대량 풋 베팅: {options_r.summary}", "💹 옵션 하방 경보"),
+        (onchain_r.status == "DANGER" and onchain_r.details.get("applicable"), "Veto #5 [Onchain]", f"크립토 급락 연동: {onchain_r.summary}", "⛓️ 온체인 급락 경보"),
+        (supply_r.status == "DANGER" and supply_r.details.get("applicable"), "Veto #6 [Supply]", f"섹터 공급망 붕괴: {supply_r.summary}", "🏭 공급망 급락 경보"),
+        (insider_r.status == "DANGER", "Veto #7 [Insider]", f"내부자 집중 매도: {insider_r.summary}", "🔬 내부자 매도 경보"),
+        (current_price < ema200 and regime in ("BEAR", "CRISIS"), "Veto #8 [Tudor Jones 200MA]", "폴 튜더 존스 법칙: 약세·위기장 200일선 아래 신규 매수 금지", "🛡️ 200일선 하회 방어"),
+    ]
+    for cond, v_tag, v_msg, v_meta in veto_Checks:
+        if cond:
+            return ChiefDecision(
+                ticker=ticker,
+                action="🚨 NO_ENTRY (VETO)",
+                score=total,
+                entry_price=round(current_price, 2),
+                stop_loss=round(stop_loss, 2),
+                target_1=round(target_1, 2),
+                target_2=round(target_2, 2),
+                position_size="0% (신규 진입 차단)",
+                briefing=f"🛑 [{v_tag} 발동] {v_msg}",
+                agent_reports=agent_reports,
+                meta_action=v_meta,
+                meta_badge="badge-red",
+                regime=regime,
+                veto_triggered=True,
+                veto_reason=f"{v_tag}: {v_msg}",
+                weights_used=weights,
+            )
+
+    if total >= 45:
+        action, base_pct, meta, badge = "🟢 STRONG_BUY", 25.0, "🔥 12팀 합산 강력 매수", "badge-green"
+    elif total >= 20:
+        action, base_pct, meta, badge = "🟡 BUY", 15.0, "📈 12팀 합산 분할 매수", "badge-green"
+    elif total <= -25:
+        action, base_pct, meta, badge = "🔴 EXIT", 0.0, "🚨 리스크 회피 / 비중 축소", "badge-red"
+    else:
+        action, base_pct, meta, badge = "⚪ WAIT", 5.0, "⏸️ 관망 / 타점 대기", "badge-blue"
+
+    vol_pct = (atr / current_price) * 100.0 if current_price > 0 else 3.0
+    pos_pct = min(base_pct, base_pct * (2.5 / max(vol_pct, 2.0))) if base_pct > 0 else 0.0
+    position_size = f"계좌의 {pos_pct:.1f}%" if pos_pct > 0 else "0% (현금 관망)"
+
+    # 조지 소로스 재료소진 익절 규칙
+    if news_r.status == "BULLISH" and safe_float(chart_r.details.get("rsi"), 50.0) >= 72.0 and total >= 30:
+        action, meta, badge = "🔵 TAKE_PROFIT", "🔵 소로스식 재료소진 분할익절", "badge-blue"
+        position_size = "보유 물량 40~50% 분할 익절"
+
+    # 더블 스퀴즈 점화 오버라이드
+    if squeeze_r.details.get("sq_score", 0) >= 75 and news_r.status != "DANGER":
+        action, meta, badge = "🌋 SQUEEZE_HOLD", "🌋 더블 스퀴즈 오버슈팅 추종", "badge-orange"
+        position_size = f"보유 유지 + 코어 트레일링 ({pos_pct:.0f}% 한도)"
+
+    briefing = (
+        f"[{regime} 레짐] 12개 팀 가중합산 {total:+.1f}점 | "
+        f"일일 변동성(ATR {vol_pct:.1f}%) 역비례 사이징 → 권장 비중: {position_size} "
+        f"(8단계 기관 Veto 전항목 통과)"
+    )
+    return ChiefDecision(
+        ticker=ticker,
+        action=action,
+        score=total,
+        entry_price=round(current_price, 2),
+        stop_loss=round(stop_loss, 2),
+        target_1=round(target_1, 2),
+        target_2=round(target_2, 2),
+        position_size=position_size,
+        briefing=briefing,
+        agent_reports=agent_reports,
+        meta_action=meta,
+        meta_badge=badge,
+        regime=regime,
+        veto_triggered=False,
+        veto_reason="",
+        weights_used=weights,
+    )
+
+
+def execute_12_agents_parallel(
+    ticker: str,
+    hist: pd.DataFrame,
+    rt_quote: dict,
+    indices: list,
+    cat: dict,
+    short_data: dict,
+    gex_data: dict,
+    squeeze_eval: dict,
+    current_price: float,
+    ema10: float,
+    ema20: float,
+    ema50: float,
+    ema200: float,
+    box_high: float,
+    box_low: float,
+    atr: float,
+    atr_pct: float,
+    rsi: float,
+    vol_ratio: float,
+    pass_count: int,
+    master_score_100: int,
+    has_bad: bool,
+    recovery_bonus: int,
+    bull_fade_penalty: float,
+) -> ChiefDecision:
+    """
+    ⭐ [17.0] ThreadPoolExecutor 병렬 실행 엔진:
+    외부 API/yfinance 호출이 필요한 에이전트들(Policy, Options Flow, Onchain, Supply, Insider, Institutional)을
+    멀티스레드로 동시에 실행하여 체감 지연을 최소화합니다.
+    """
+    sector = _get_sector(ticker)
+    raw_cand = fetch_raw_news_candidates(ticker, company_name=(rt_quote or {}).get("company_name", ""))
+
+    data_r = run_data_agent(ticker, hist, rt_quote)
+    chart_r = run_chart_agent(
+        ticker, current_price, ema10, ema20, ema50, ema200,
+        box_high, box_low, atr, atr_pct, rsi, vol_ratio,
+    )
+    macro_r = run_macro_agent(indices, cat=cat)
+    master_r = run_master_agent(chart_r, pass_count, master_score_100, has_bad=has_bad)
+    news_r = run_news_agent_from_cat(cat, recovery_bonus=recovery_bonus, bull_fade_penalty=bull_fade_penalty)
+    squeeze_r = run_squeeze_agent_from_eval(squeeze_eval, short_data, gex_data)
+
+    # 병렬 I/O 실행 (Policy, Options Flow, Onchain, Supply, Insider, Institutional)
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        f_pol = ex.submit(run_policy_agent, ticker, raw_cand)
+        f_opt = ex.submit(run_options_agent, ticker, current_price, gex_data)
+        f_onc = ex.submit(run_onchain_agent, ticker)
+        f_sup = ex.submit(run_supply_agent, ticker, sector)
+        f_ins = ex.submit(run_insider_agent, ticker)
+        f_inst = ex.submit(run_institutional_agent, ticker)
+
+        policy_r = f_pol.result()
+        options_r = f_opt.result()
+        onchain_r = f_onc.result()
+        supply_r = f_sup.result()
+        insider_r = f_ins.result()
+        institutional_r = f_inst.result()
+
+    return run_chief_manager(
+        ticker, current_price,
+        data_r, chart_r, macro_r, master_r, news_r, policy_r,
+        options_r, onchain_r, supply_r, squeeze_r, insider_r, institutional_r,
+    )
+
+
+# ------------------------------------------------------------------------------
+# [Journal Agent] 실전 매매일지 통계 & 8대 잘못된 매매 습관(Behavioral Biases) 진단
+# ------------------------------------------------------------------------------
+def analyze_trade_journal() -> AgentReport:
+    """매매일지 DB를 분석하여 기법별·심리별·종목별 성과 통계 + 8대 매매 습관 편향 진단을 반환."""
+    entries = db_get_journal_entries(limit=500)
+    if not entries:
+        return AgentReport("Journal", 0, "NEUTRAL", "매매일지 데이터 없음 (복기 기록 필요)", {
+            "total": 0, "total_pnl": 0.0, "win_rate": 0.0, "profit_factor": 0.0,
+            "expectancy": 0.0, "avg_win": 0.0, "avg_loss": 0.0,
+            "strategy_stats": [], "emotion_stats": [], "ticker_stats": [],
+            "biases": [], "signal_stats": [],
+        })
+
+    df = pd.DataFrame(entries)
+    pnls = np.array([safe_float(p) for p in df["실현손익($)"].values], dtype="float64")
+    total = len(pnls)
+    total_pnl = float(pnls.sum())
+    wins, losses = pnls[pnls > 0], pnls[pnls < 0]
+    win_rate = (len(wins) / total * 100.0) if total > 0 else 0.0
+    avg_win = float(wins.mean()) if len(wins) > 0 else 0.0
+    avg_loss = float(abs(losses.mean())) if len(losses) > 0 else 0.0
+    gross_win, gross_loss = float(wins.sum()), float(abs(losses.sum()))
+    profit_factor = (gross_win / gross_loss) if gross_loss > 0 else (99.0 if gross_win > 0 else 0.0)
+    expectancy = (win_rate / 100.0) * avg_win - (1.0 - win_rate / 100.0) * avg_loss
+
+    # 1) 6대 대가 기법별 성과
+    strategy_stats = []
+    for strat, group in df.groupby("적용기법"):
+        g = np.array([safe_float(x) for x in group["실현손익($)"].values], dtype="float64")
+        gw, gl = g[g > 0], g[g < 0]
+        gwr = (len(gw) / len(g) * 100.0) if len(g) > 0 else 0.0
+        gpf = (gw.sum() / abs(gl.sum())) if len(gl) > 0 and gl.sum() != 0 else (99.0 if len(gw) > 0 else 0.0)
+        strategy_stats.append({
+            "기법": str(strat or "기타"),
+            "거래": int(len(g)),
+            "승률": round(float(gwr), 1),
+            "총손익": round(float(g.sum()), 2),
+            "평균손익": round(float(g.mean()), 2),
+            "PF": round(float(gpf), 2),
+            "승": int(len(gw)),
+            "패": int(len(gl)),
+        })
+    strategy_stats.sort(key=lambda x: -x["총손익"])
+
+    # 2) 심리상태별 성과
+    emotion_stats = []
+    for emo, group in df.groupby("심리상태"):
+        e = np.array([safe_float(x) for x in group["실현손익($)"].values], dtype="float64")
+        ew = e[e > 0]
+        ewr = (len(ew) / len(e) * 100.0) if len(e) > 0 else 0.0
+        emotion_stats.append({
+            "심리": str(emo or "미기록"),
+            "거래": int(len(e)),
+            "승률": round(float(ewr), 1),
+            "총손익": round(float(e.sum()), 2),
+            "평균손익": round(float(e.mean()), 2),
+        })
+    emotion_stats.sort(key=lambda x: -x["총손익"])
+
+    # 3) 종목별 성과
+    ticker_stats = []
+    for tk, group in df.groupby("티커"):
+        t_arr = np.array([safe_float(x) for x in group["실현손익($)"].values], dtype="float64")
+        tw = t_arr[t_arr > 0]
+        twr = (len(tw) / len(t_arr) * 100.0) if len(t_arr) > 0 else 0.0
+        ticker_stats.append({
+            "티커": str(tk),
+            "거래": int(len(t_arr)),
+            "승률": round(float(twr), 1),
+            "총손익": round(float(t_arr.sum()), 2),
+        })
+    ticker_stats.sort(key=lambda x: -x["총손익"])
+
+    # 4) ⚠️ 잘못된 매매 습관 자동 지적 (8대 Behavioral Biases)
+    biases = []
+
+    fomo_df = df[df["심리상태"].astype(str).str.contains("FOMO", na=False)]
+    if len(fomo_df) >= 1:
+        fp = np.array([safe_float(x) for x in fomo_df["실현손익($)"].values], dtype="float64")
+        if fp.sum() < 0:
+            biases.append({
+                "level": "DANGER",
+                "type": "🔥 FOMO 추격매수 손실 집중",
+                "desc": f"FOMO 추격매수 {len(fp)}건 누적손익 ${fp.sum():+,.0f}. 급등 캔들 추격 진입을 중단하고 다바스 박스 돌파/눌림목 원칙만 진입하십시오.",
+            })
+
+    revenge_df = df[df["심리상태"].astype(str).str.contains("복수|뇌동", na=False, regex=True)]
+    if len(revenge_df) >= 1:
+        rp = np.array([safe_float(x) for x in revenge_df["실현손익($)"].values], dtype="float64")
+        if rp.sum() < 0:
+            biases.append({
+                "level": "DANGER",
+                "type": "😡 복수/뇌동매매 경보",
+                "desc": f"복수·뇌동매매 {len(rp)}건 누적손익 ${rp.sum():+,.0f}. 손절 직후 당일 즉각 재진입을 금지하는 쿨다운(Cool-down) 규칙이 필요합니다.",
+            })
+
+    fear_df = df[df["심리상태"].astype(str).str.contains("공포", na=False)]
+    if len(fear_df) >= 2:
+        fp2 = np.array([safe_float(x) for x in fear_df["실현손익($)"].values], dtype="float64")
+        if fp2.mean() < pnls.mean() * 0.7:
+            biases.append({
+                "level": "WARN",
+                "type": "😨 공포 조기매도 (수익 단타화)",
+                "desc": f"공포 상태 평균 손익 ${fp2.mean():+,.1f} (전체 평균 ${pnls.mean():+,.1f}). 잔파도 노이즈에 흔들리지 말고 샹들리에 청산선까지 홀딩하십시오.",
+            })
+
+    if len(wins) > 0 and len(losses) > 0:
+        if avg_loss > avg_win * 1.3:
+            biases.append({
+                "level": "DANGER",
+                "type": "⚖️ 손실 회피 편향 (Disposition Effect)",
+                "desc": f"평균 손실(${avg_loss:,.0f})이 평균 수익(${avg_win:,.0f})의 1.3배를 초과합니다. 익절은 짧고 손절은 미루는 전형적 계좌 마모 패턴입니다.",
+            })
+        if profit_factor < 1.0:
+            biases.append({
+                "level": "DANGER",
+                "type": "📉 손익비 역전 (Profit Factor < 1.0)",
+                "desc": f"현재 손익비(PF) {profit_factor:.2f}. 총손실이 총수익보다 큽니다. 타이트 손절선(-7% 또는 ATR 스탑) 기계적 준수가 시급합니다.",
+            })
+
+    try:
+        date_counts = df.groupby("일자").size()
+        overtrade_days = date_counts[date_counts >= 3]
+        if len(overtrade_days) >= 3:
+            biases.append({
+                "level": "WARN",
+                "type": "🎰 과매매 (Overtrading)",
+                "desc": f"하루 3건 이상 매매한 날이 {len(overtrade_days)}일 포착되었습니다. 매매 횟수를 줄이고 12팀 합산 45점 이상 A급 타점에만 집중하십시오.",
+            })
+    except Exception:
+        pass
+
+    if len(ticker_stats) >= 3 and total_pnl > 0:
+        top_pnl = ticker_stats[0]["총손익"]
+        if top_pnl / total_pnl > 0.8:
+            biases.append({
+                "level": "INFO",
+                "type": f"🎯 특정 종목 편식 ({ticker_stats[0]['티커']})",
+                "desc": f"전체 누적 수익의 {top_pnl/total_pnl*100:.0f}%가 {ticker_stats[0]['티커']} 한 종목에 집중되어 있습니다. 섹터 분산으로 계좌 변동성을 낮추십시오.",
+            })
+
+    if "심리상태" in df.columns:
+        no_emotion = int(df["심리상태"].isna().sum() + (df["심리상태"].astype(str).str.strip() == "").sum())
+        if total > 0 and no_emotion / total > 0.3:
+            biases.append({
+                "level": "INFO",
+                "type": "📝 심리 상태 기록 누락",
+                "desc": f"전체 {total}건 중 {no_emotion}건의 심리 태그가 비어 있습니다. 매매 당시 심리를 기록해야 정확한 행동재무학 교정이 가능합니다.",
+            })
+
+    if len(strategy_stats) >= 2:
+        best_s = max(strategy_stats, key=lambda x: x["승률"])
+        worst_s = min(strategy_stats, key=lambda x: x["승률"])
+        if best_s["승률"] - worst_s["승률"] >= 20:
+            biases.append({
+                "level": "INFO",
+                "type": "🎓 대가 기법별 승률 격차 확인",
+                "desc": f"'{best_s['기법']}' 승률({best_s['승률']:.1f}%)이 '{worst_s['기법']}'({worst_s['승률']:.1f}%)보다 월등히 높습니다. 본인에게 가장 잘 맞는 '{best_s['기법']}' 비중을 확대하십시오.",
+            })
+
+    if not biases:
+        biases.append({
+            "level": "INFO",
+            "type": "✅ 원칙 중심의 모범적 매매 습관",
+            "desc": "현재 기록된 매매일지에서 치명적인 FOMO·복수매매·손실회피 편향이 발견되지 않았습니다. 현재의 손익비와 원칙을 그대로 유지하십시오!",
+        })
+
+    signal_stats = db_get_signal_stats()
+    if total_pnl > 0 and profit_factor >= 1.5 and win_rate >= 50:
+        score, status = 80, "BULLISH"
+    elif total_pnl >= 0 and profit_factor >= 1.0:
+        score, status = 55, "NEUTRAL"
+    else:
+        score, status = 25, "BEARISH"
+
+    summary = (
+        f"총 {total}건 | 승률 {win_rate:.1f}% | PF {profit_factor:.2f} | "
+        f"누적 ${total_pnl:+,.0f} | 기대값 ${expectancy:+.1f}/건"
+    )
+    return AgentReport(
+        name="Journal",
+        score=score,
+        status=status,
+        summary=summary,
+        details={
+            "total": total,
+            "total_pnl": round(total_pnl, 2),
+            "win_rate": round(win_rate, 1),
+            "profit_factor": round(profit_factor, 2),
+            "expectancy": round(expectancy, 2),
+            "avg_win": round(avg_win, 2),
+            "avg_loss": round(avg_loss, 2),
+            "strategy_stats": strategy_stats,
+            "emotion_stats": emotion_stats,
+            "ticker_stats": ticker_stats,
+            "biases": biases,
+            "signal_stats": signal_stats,
+        },
+    )
+
+
+def render_chief_control_tower_ui(chief: ChiefDecision):
+    """Tab 1에 표시되는 12대 에이전트 통합 컨트롤 타워 & 8단계 Veto 카드."""
+    regime_badge_map = {
+        "BULL": ("🟢 BULL (강세장 가중치)", "badge-green"),
+        "NEUTRAL": ("⚖️ NEUTRAL (중립장 가중치)", "badge-indigo"),
+        "BEAR": ("🟠 BEAR (약세장 방어가중치)", "badge-yellow"),
+        "CRISIS": ("🚨 CRISIS (위기장 비상가중치)", "badge-red"),
+    }
+    reg_txt, reg_cls = regime_badge_map.get(chief.regime, ("⚖️ NEUTRAL", "badge-indigo"))
+    veto_html = (
+        f'<span class="badge badge-red">🛑 {html.escape(chief.veto_reason)}</span>'
+        if chief.veto_triggered
+        else '<span class="badge badge-teal">✅ 8단계 기관 Veto 전항목 통과</span>'
+    )
+    border_c = "#f43f5e" if chief.veto_triggered else ("#10b981" if chief.score >= 20 else "#38bdf8")
+
+    icon_map = {
+        "Data": "📊 데이터",
+        "Chart": "📈 차트",
+        "Macro": "🌍 매크로",
+        "Master": "👑 6대대가",
+        "News": "📰 뉴스/실적",
+        "Policy": "🏛️ 정책/규제",
+        "Options": "💹 옵션흐름",
+        "Onchain": "⛓️ 온체인",
+        "Supply": "🏭 공급망",
+        "Squeeze": "🌋 스퀴즈",
+        "Insider": "🔬 내부자(F4)",
+        "Institutional": "🏦 기관(13F)",
+    }
+    st_color_map = {
+        "BULLISH": "#10b981",
+        "GOOD": "#10b981",
+        "NEUTRAL": "#94a3b8",
+        "BEARISH": "#f59e0b",
+        "DANGER": "#f43f5e",
+    }
+
+    cells = []
+    for rep in chief.agent_reports:
+        lbl = icon_map.get(rep.name, rep.name)
+        sc_col = st_color_map.get(rep.status, "#94a3b8")
+        sc_str = f"{rep.score:+.0f}점" if rep.name not in ("Data", "Squeeze") else (f"{rep.score:.0f}/100" if rep.name == "Squeeze" else "LIVE")
+        cells.append(f"""
+        <div style="background:rgba(0,0,0,.42); border:1px solid {sc_col if rep.status=='DANGER' else 'rgba(255,255,255,.08)'}; padding:8px 9px; border-radius:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
+                <span style="font-size:10px; font-weight:800; color:#e2e8f0;">{lbl}</span>
+                <span class="mono" style="font-size:10px; font-weight:800; color:{sc_col};">{sc_str}</span>
+            </div>
+            <div style="font-size:10px; color:{sc_col}; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="{html.escape(rep.summary)}">
+                {html.escape(rep.summary)}
+            </div>
+        </div>""")
+
+    render_html(f"""
+    <div class="chief-card" style="border-color:{border_c};">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,.12); padding-bottom:8px;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <span style="font-size:15px; font-weight:800; color:#38bdf8;">🧠 Chief AI Manager — 12대 전담팀 통합 컨트롤 타워</span>
+                <span class="badge {reg_cls}">{reg_txt}</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <span class="badge {chief.meta_badge}">{html.escape(chief.action)} ({chief.score:+.1f}점)</span>
+                {veto_html}
+            </div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:10px;">
+            {"".join(cells)}
+        </div>
+        <div style="background:rgba(15,23,42,.85); border-left:4px solid {border_c}; padding:9px 13px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="font-size:11px; color:#f8fafc; font-weight:700; line-height:1.5;">
+                🎯 <b>Chief 브리핑:</b> {html.escape(chief.briefing)}
+            </div>
+            <div class="mono" style="font-size:11px; color:#38bdf8; font-weight:800;">
+                손절 ${chief.stop_loss:,.2f} | 1차 ${chief.target_1:,.2f} | 2차 ${chief.target_2:,.2f}
+            </div>
+        </div>
+    </div>""")
+
+    with st.expander("🔍 12대 전문 에이전트 심층 브리핑 상세보기 (정책 · SEC 내부자 · 13F 기관 · 공급망 · 온체인 · 옵션흐름)", expanded=False):
+        rep_map = {r.name: r for r in chief.agent_reports}
+        pol_d = rep_map.get("Policy", AgentReport("Policy", 0, "NEUTRAL", "")).details
+        ins_d = rep_map.get("Insider", AgentReport("Insider", 0, "NEUTRAL", "")).details
+        inst_d = rep_map.get("Institutional", AgentReport("Institutional", 0, "NEUTRAL", "")).details
+        sup_d = rep_map.get("Supply", AgentReport("Supply", 0, "NEUTRAL", "")).details
+        onc_d = rep_map.get("Onchain", AgentReport("Onchain", 0, "NEUTRAL", "")).details
+        opt_d = rep_map.get("Options", AgentReport("Options", 0, "NEUTRAL", "")).details
+
+        c_a, c_b = st.columns(2)
+        with c_a:
+            st.markdown("##### 🏛️ [Agent 6] 정책·법안·관세·규제 (Policy)")
+            st.caption(f"섹터: **{pol_d.get('sector') or '일반'}** | 정책호재 {pol_d.get('bull_cnt', 0)}건 · 정책악재 {pol_d.get('bear_cnt', 0)}건 · 선거 {pol_d.get('election_cnt', 0)}건")
+            for m in (pol_d.get("matched") or [])[:4]:
+                st.markdown(f"- {m['sentiment']} [{m['title']}]({m['link']}) ({m['age']:.0f}h 전)")
+            if not pol_d.get("matched"):
+                st.caption("• 최근 72h 내 특이 워싱턴/섹터 규제 충돌 없음")
+
+            st.markdown("##### 🔬 [Agent 11] SEC Form 4 내부자 거래 (최근 90일)")
+            st.caption(f"장내 매수 **{ins_d.get('buy_cnt', 0)}건** (${ins_d.get('buy_value', 0)/1e6:.2f}M) | 장내 매도 **{ins_d.get('sell_cnt', 0)}건** (${ins_d.get('sell_value', 0)/1e6:.2f}M)")
+            for r_txt in (ins_d.get("reasons") or []):
+                st.caption(f"• {r_txt}")
+
+            st.markdown("##### 🏭 [Agent 9] 섹터 공급망 동반 모니터 (Supply)")
+            if sup_d.get("applicable") and sup_d.get("peers"):
+                peer_str = " · ".join(f"**{p}** ({c:+.2f}%)" for p, c in sup_d["peers"])
+                st.caption(f"동반 그룹 평균 **{sup_d.get('avg_change', 0.0):+.2f}%** → {peer_str}")
+            else:
+                st.caption("• 개별 모멘텀 중심 종목 (공급망 바스켓 비대상)")
+
+        with c_b:
+            st.markdown("##### 🏦 [Agent 12] 13F 메이저 기관 보유 (Institutional)")
+            st.caption(f"상위 기관 지분 합계: **{inst_d.get('total_pct', 0.0):.1f}%** | 메이저(블랙록/뱅가드 등) 편입: **{'예' if inst_d.get('has_major') else '미확인'}**")
+            for h_item in (inst_d.get("top_holders") or [])[:4]:
+                st.caption(f"• **{h_item['holder']}**: {h_item['pct']:.2f}% ({h_item['shares']:,.0f}주)")
+
+            st.markdown("##### 💹 [Agent 7] 옵션 플로우 & 이상 스윕 (Options Flow)")
+            st.caption(
+                f"만기: **{opt_d.get('expiry', 'N/A')}** | P/C 거래량비: **{opt_d.get('pc_vol_ratio', 1.0):.2f}** | "
+                f"이상 콜거래: **{opt_d.get('unusual_calls', 0)}건** | 이상 풋거래: **{opt_d.get('unusual_puts', 0)}건**"
+            )
+
+            st.markdown("##### ⛓️ [Agent 8] 크립토 온체인 (Onchain BTC/ETH)")
+            if onc_d.get("applicable"):
+                st.caption(
+                    f"BTC: **${onc_d.get('btc_price', 0):,.0f}** ({onc_d.get('btc_change', 0):+.2f}%) | "
+                    f"ETH: **${onc_d.get('eth_price', 0):,.0f}** ({onc_d.get('eth_change', 0):+.2f}%)"
+                )
+            else:
+                st.caption("• 크립토 직접 연동 종목 아님 (온체인 가중치 0% 자동 제외)")
+
+
+# ==============================================================================
+# 14) TAB 1: 개별 종목 분석 (⭐ 실시간 시세 동기화 + [16.4] 과거 호악재 패스 & 중대악재 방어)
 # ==============================================================================
 def render_tab_analysis(indices, usd_krw):
     if "selected_ticker" not in st.session_state:
@@ -2293,6 +4866,7 @@ def render_tab_analysis(indices, usd_krw):
     change_pct = (change / prev_close) * 100 if prev_close > 0 else 0.0
     last_bar_date = pd.Timestamp(hist.index[-1]).strftime("%Y-%m-%d")
     quote_src = rt_quote.get("source", "Live Sync") if rt_quote else "Daily Sync"
+    comp_name = str(rt_quote.get("company_name") or "") if rt_quote else ""
     ext_px = safe_float(rt_quote.get("ext_price"), 0.0) if rt_quote else 0.0
     ext_chg = safe_float(rt_quote.get("ext_change"), 0.0) if rt_quote else 0.0
     ext_chg_pct = safe_float(rt_quote.get("ext_change_pct"), 0.0) if rt_quote else 0.0
@@ -2349,12 +4923,13 @@ def render_tab_analysis(indices, usd_krw):
     fng = get_fear_and_greed_index()
     indices_key = normalize_indices_key(indices)
     use_llm = bool(os.getenv("OPENAI_API_KEY"))
-    cat = analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=use_llm)
+    cat = analyze_macro_and_stock_catalysts(ticker, indices_key, company_name=comp_name, use_llm=use_llm)
 
-    # ⭐⭐⭐ [16.2] Patch C: 악재 나이 기반 회복 판정 + 캐시 변이 방지 ⭐⭐⭐
+    # ⭐⭐⭐ [16.4] 과거 악재 가격 회복 보정 + 주가 역행(Sell-the-news) 과거 호재 자동 패스 ⭐⭐⭐
     recovery_bonus = 0
     recovery_note = ""
-    catalyst_summary_display = list(cat['catalyst_summary'])  # 캐시 원본 변이 방지 복사본
+    bull_fade_penalty = 0.0
+    catalyst_summary_display = list(cat['catalyst_summary'])
     try:
         newest_bad_h = safe_float(cat.get("bad_newest_hours", 9999.0), 9999.0)
         min_age_h = CFG["news"]["recovery_min_age_hours"]
@@ -2366,11 +4941,20 @@ def render_tab_analysis(indices, usd_krw):
                     rec_pct = (current_price / ref_px - 1) * 100
                     if rec_pct >= CFG["news"]["recovery_pct_forgive"]:
                         recovery_bonus = int(CFG["news"]["recovery_bonus"])
-                        recovery_note = f"악재({newest_bad_h:.0f}h 전) 후 +{rec_pct:.1f}% 회복 → 시장 소화 완료 (+{recovery_bonus}점 환급)"
+                        recovery_note = f"과거 악재({newest_bad_h:.0f}h 전) 후 +{rec_pct:.1f}% 반등 → 악재 선반영 패스 (+{recovery_bonus}점 환급)"
+
+        # 호재 기사가 18시간 이상 지났는데 주가가 20일선 아래에서 -2% 이상 하락 중이면 '재료 소멸(과거 호재)'로 가산점 패스
+        newest_bull_h = safe_float(cat.get("bull_newest_hours", 9999.0), 9999.0)
+        if cat.get("bull_score", 0.0) > 0 and newest_bull_h >= 18.0 and (current_price < ema20 and change_pct <= -2.0):
+            bull_fade_penalty = float(cat.get("bull_score", 0.0))
+            catalyst_summary_display.append(f"⏭️ 호재({newest_bull_h:.0f}h 전) 후 주가 역행({change_pct:+.1f}%) → 재료 소멸 패스")
     except Exception:
         pass
     if recovery_note:
         catalyst_summary_display.append(f"💡 {recovery_note}")
+
+    # 중대 악재 1건 이상이거나 최근 48h 악재 2건 이상이면 즉시 악재 경보 발동!
+    has_bad = (cat.get("severe_bad_hits", 0) >= 1 or cat.get("bad_news_hits", 0) >= 2) and recovery_bonus == 0
 
     noise_eval = evaluate_holding_noise_filter(ticker, hist)
     short_data = get_short_interest_data(ticker)
@@ -2396,8 +4980,20 @@ def render_tab_analysis(indices, usd_krw):
         weinstein_stage, weinstein_status = "3단계 천장 분배 (주의)", "STAGE 3 ⚠️"
     else:
         weinstein_stage, weinstein_status = "1단계 바닥 매집", "STAGE 1 🟡"
-    is_panic = current_price < ema20 and rsi <= 25.0
-    livermore_status = "PANIC BUY 🟢" if is_panic else ("PIVOT 돌파 🟢" if current_price >= box_high else ("과매도 🟡" if rsi <= 35.0 else "NEUTRAL ⚪"))
+
+    # ⭐ 중대 악재(has_bad)가 있을 때는 RSI <= 25라도 PANIC BUY(공포 역발상 매수) 신호를 차단!
+    is_panic = (current_price < ema20 and rsi <= 25.0) and (not has_bad)
+    if current_price < ema20 and rsi <= 25.0 and has_bad:
+        livermore_status = "악재투매 위험 🔴"
+    elif is_panic:
+        livermore_status = "PANIC BUY 🟢"
+    elif current_price >= box_high:
+        livermore_status = "PIVOT 돌파 🟢"
+    elif rsi <= 35.0:
+        livermore_status = "과매도 🟡"
+    else:
+        livermore_status = "NEUTRAL ⚪"
+
     is_tudor = current_price > ema200 and current_price > vwap_year_val
     if is_tudor and current_price > vwap_week_val:
         tudor_status = "기관수급 우위 🟢"
@@ -2417,7 +5013,17 @@ def render_tab_analysis(indices, usd_krw):
     if current_price < ema20 and not is_panic: master_score -= 20
     master_score = max(0, min(100, master_score))
 
-    if current_price >= box_high and vol_ratio >= 1.5:
+    if has_bad and current_price < ema20:
+        summoned = "👑 [리스크 관리 소환] 폴 튜더 존스 & 스탠 와인스타인"
+        meta_action, meta_badge = "🚨 악재 투매 경보 — 진입 금지 (FALLING KNIFE)", "badge-red"
+        meta_headline = f"최근 48h 악재 포착 + 20일선(${ema20:,.2f}) 이탈 (RSI {rsi:.1f})"
+        meta_desc = "계약 중단·희석·하향 등 펀더멘털 악재가 동반된 하락입니다. 단순 RSI 과매도 역발상 매수를 엄금합니다."
+        stop_loss = current_price * 0.96
+        target_1, target_2 = current_price * 1.03, current_price * 1.05
+        tp1_ratio, tp2_ratio, hold_ratio = 0.80, 0.20, 0.00
+        seed_alloc = "0% (신규 진입 금지)"
+        sizing_rule = "신규 물타기 금지, 기술적 반등 시 현금 비중 확보"
+    elif current_price >= box_high and vol_ratio >= 1.5:
         summoned = "👑 [제1명인 소환] 윌리엄 오닐 & 니콜라스 다바스"
         meta_action, meta_badge = "🔥 강력 돌파 매수 (SUPER STRONG BUY)", "badge-green"
         meta_headline = "CANSLIM 거래량 폭발 + 다바스 박스 돌파"
@@ -2437,10 +5043,10 @@ def render_tab_analysis(indices, usd_krw):
         tp1_ratio, tp2_ratio, hold_ratio = 0.40, 0.30, 0.30
         seed_alloc = "계좌의 15~20%"
         sizing_rule = "1차(40%) 익절 확정 후 잔여 물량 추세 추종"
-    elif current_price < ema20 and rsi <= 25.0:
+    elif is_panic:
         summoned = "👑 [제5명인 소환] 래리 코너스 & 폴 튜더 존스"
         meta_action, meta_badge = "🟢 공포 투매 역발상 (PANIC BUY)", "badge-green"
-        meta_headline = f"과매도 클라이맥스 (RSI {rsi:.1f})"
+        meta_headline = f"개별 악재 없는 기술적 과매도 클라이맥스 (RSI {rsi:.1f})"
         meta_desc = "코너스 '70:30' 익절 법칙."
         stop_loss = current_price * 0.94
         target_1, target_2 = current_price * 1.06, current_price * 1.12
@@ -2478,13 +5084,16 @@ def render_tab_analysis(indices, usd_krw):
         seed_alloc = "계좌의 5~10%"
         sizing_rule = "박스 상단 50% 익절, 돌파 시 잔량 홀딩"
 
-    grand = int(np.clip(master_score + cat['macro_score'] + cat['catalyst_score'] + recovery_bonus + squeeze_eval['bonus'], 0, 100))
+    eff_catalyst_score = cat['catalyst_score'] - bull_fade_penalty
+    grand = int(np.clip(master_score + cat['macro_score'] + eff_catalyst_score + recovery_bonus + squeeze_eval['bonus'], 0, 100))
     has_macro_crisis = cat['macro_score'] <= -15
-    has_bad = cat['bad_news_hits'] >= 2 and recovery_bonus == 0
 
     if has_bad and current_price < ema20:
-        fv_title, fv_color = "🚨 [최종 결론] 개별 악재 + 추세 이탈 — 진입 금지", "#f43f5e"
-        fv_summary = f"악재 {cat['bad_news_hits']}건(최근 48h) + 20일선 이탈. 물타기 중단, 현금 수성."
+        fv_title, fv_color = "🚨 [최종 결론] 최신 중대 악재 + 추세 이탈 — 진입 금지", "#f43f5e"
+        fv_summary = f"최근 48h 악재 {cat['bad_news_hits']}건(중대 {cat.get('severe_bad_hits', 0)}건) + 20일선 이탈. 역발상 물타기 중단 및 현금 수성."
+    elif has_bad:
+        fv_title, fv_color = "⚠️ [최종 결론] 최신 악재 경보 — 추격매수 금지·비중 축소", "#f43f5e"
+        fv_summary = f"최근 48h 내 악재({cat['bad_news_hits']}건) 발생. 신규 매수 보류 및 타이트 손절선(-{ts_tight_pct:.1f}%) 엄수."
     elif has_macro_crisis and "BUY" in meta_action:
         fv_title, fv_color = "⚠️ [최종 결론] 차트 돌파지만 매크로 경보 — 시드 50% 축소", "#f59e0b"
         fv_summary = f"매크로 경보 발령. 시드 절반만 진입 + 타이트 스탑(-{ts_tight_pct:.1f}%)."
@@ -2498,7 +5107,7 @@ def render_tab_analysis(indices, usd_krw):
         fv_summary = f"{rec_txt}{bonus_txt}종합 {grand}점. {seed_alloc} 진입 후 1차(${target_1:,.2f}) {int(tp1_ratio*100)}% 익절, 코어 트레일링 -{ts_core_pct:.1f}%."
     elif "PANIC" in meta_action:
         fv_title, fv_color = "🟢 [최종 결론] 극단 공포 투매 클라이맥스", "#34d399"
-        fv_summary = f"RSI {rsi:.1f}. 1차 반등(${target_1:,.2f}) 시 70% 수익 확정."
+        fv_summary = f"최근 48h 악재 없는 기술적 과매도(RSI {rsi:.1f}). 1차 반등(${target_1:,.2f}) 시 70% 수익 확정."
     elif current_price < ema20:
         fv_title, fv_color = "🛡️ [최종 결론] 추세 약세 — 현금 확보", "#f43f5e"
         fv_summary = f"20일선(${ema20:,.2f}) 이탈. 회복 전 보수적 대응."
@@ -2543,7 +5152,7 @@ def render_tab_analysis(indices, usd_krw):
     <div class="verdict-card" style="border-color:{fv_color};">
         <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,.12); padding-bottom:8px;">
             <span style="font-size:15px; font-weight:800; color:{fv_color};">{fv_title}</span>
-            <span class="badge badge-indigo">{cat['earnings_info']}</span>
+            <span class="badge {cat.get('earnings_badge', 'badge-indigo')}">{cat['earnings_info']}</span>
         </div>
         <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px;">
             <div style="background:rgba(0,0,0,.4); padding:9px 10px; border-radius:8px; border:1px solid rgba(255,255,255,.08);">
@@ -2551,7 +5160,7 @@ def render_tab_analysis(indices, usd_krw):
                 <div style="font-size:10px; color:#cbd5e1; line-height:1.45;">{mb}</div>
             </div>
             <div style="background:rgba(0,0,0,.4); padding:9px 10px; border-radius:8px; border:1px solid rgba(255,255,255,.08);">
-                <div style="font-size:11px; font-weight:800; color:#a855f7; margin-bottom:4px;">🏢 ② 실적·계약·악재</div>
+                <div style="font-size:11px; font-weight:800; color:#a855f7; margin-bottom:4px;">🏢 ② 실적·계약·악재 (48h 선별)</div>
                 <div style="font-size:10px; color:#cbd5e1; line-height:1.45;">{cb}</div>
             </div>
             <div style="background:rgba(0,0,0,.4); padding:9px 10px; border-radius:8px; border:1px solid rgba(255,255,255,.08);">
@@ -2569,6 +5178,35 @@ def render_tab_analysis(indices, usd_krw):
             </div>
         </div>
     </div>""")
+
+    # ⭐ [17.0] 12대 전문 에이전트 병렬 실행 & Chief AI Manager (8단계 Veto) 컨트롤 타워
+    chief_decision = execute_12_agents_parallel(
+        ticker=ticker,
+        hist=hist,
+        rt_quote=rt_quote,
+        indices=indices,
+        cat=cat,
+        short_data=short_data,
+        gex_data=gex_data,
+        squeeze_eval=squeeze_eval,
+        current_price=current_price,
+        ema10=ema10,
+        ema20=ema20,
+        ema50=ema50,
+        ema200=ema200,
+        box_high=box_high,
+        box_low=box_low,
+        atr=atr,
+        atr_pct=atr_pct,
+        rsi=rsi,
+        vol_ratio=vol_ratio,
+        pass_count=pass_count,
+        master_score_100=master_score,
+        has_bad=has_bad,
+        recovery_bonus=recovery_bonus,
+        bull_fade_penalty=bull_fade_penalty,
+    )
+    render_chief_control_tower_ui(chief_decision)
 
     call_wall = gex_data.get("call_wall")
     put_wall = gex_data.get("put_wall")
@@ -2851,9 +5489,9 @@ def render_tab_analysis(indices, usd_krw):
     fig.update_yaxes(gridcolor="#1e293b", showgrid=True)
     st.plotly_chart(fig, use_container_width=True)
 
-    render_html("""<div style="font-weight:700; color:#38bdf8; font-size:13px; margin:14px 0 8px 0;">📰 실시간 뉴스 & AI 판독 (7일 이내 · 신선도 가중치 적용)</div>""")
+    render_html("""<div style="font-weight:700; color:#38bdf8; font-size:13px; margin:14px 0 8px 0;">📰 실시간 뉴스 & AI 판독 (48h 내 유효 호악재 반영 · 48h 경과 과거뉴스 자동 패스)</div>""")
     if not cat['news_items']:
-        render_html("""<div style="color:#64748b; font-size:12px; padding:12px; background:#0f172a; border:1px solid #1e293b; border-radius:8px;">최근 7일 이내 관련 뉴스가 없습니다.</div>""")
+        render_html("""<div style="color:#64748b; font-size:12px; padding:12px; background:#0f172a; border:1px solid #1e293b; border-radius:8px;">최근 72시간 이내 관련 뉴스가 없습니다.</div>""")
     for n in cat['news_items']:
         render_html(f"""
         <div style="background:#0f172a; border:1px solid #1e293b; border-radius:8px; padding:10px 14px; margin-bottom:8px;">
@@ -3305,42 +5943,112 @@ def render_tab_journal(usd_krw):
 
     entries = db_get_journal_entries()
     if not entries:
-        st.info("아직 기록된 매매일지가 없습니다. 위 입력창에서 첫 매매 복기를 기록해보세요!")
+        st.info("아직 기록된 매매일지가 없습니다. 위 입력창에서 첫 매매 복기를 기록하거나 아래 샘플 데이터를 로드해 AI 습관 진단을 체험해보세요!")
+        if st.button("🧪 샘플 매매일지 (6대 대가 기법 & 심리 복기 6건) 자동 로드", use_container_width=True):
+            sample_rows = [
+                ("2026-10-15", "NVDA", "1차익절", 138.5, 50, 675.0, "오닐 CANSLIM 돌파", "✅ 원칙준수 (냉정)", "20일 신고가 + 거래량 1.8배 돌파 매수 후 1차 익절"),
+                ("2026-10-16", "IREN", "2차익절", 15.8, 200, 520.0, "다바스 박스 돌파", "✅ 원칙준수 (냉정)", "박스 상단 돌파 후 트레일링 스탑 홀딩 익절"),
+                ("2026-10-18", "TSLA", "원칙손절", 228.0, 30, -180.0, "기타/재량", "🔥 FOMO 추격매수", "장초반 급등 추격매수 후 20일선 이탈 손절"),
+                ("2026-10-19", "PLTR", "1차익절", 44.2, 100, 390.0, "미너비니 SEPA/VCP", "✅ 원칙준수 (냉정)", "VCP 변동성 수축 돌파 진입 후 분할 익절"),
+                ("2026-10-20", "MSTR", "원칙손절", 195.0, 20, -140.0, "코너스 RSI 역발상", "😡 복수/뇌동매매", "직전 손절 만회하려 성급히 진입했다가 손절"),
+                ("2026-10-21", "IONQ", "트레일링청산", 14.5, 150, 410.0, "와인스타인 2단계", "✅ 원칙준수 (냉정)", "2단계 정배열 추세 추종 후 샹들리에 익절"),
+            ]
+            for r_dt, r_tk, r_sd, r_px, r_q, r_pnl, r_st, r_em, r_mm in sample_rows:
+                db_add_journal_entry(r_dt, r_tk, r_sd, r_px, r_q, r_pnl, r_st, r_em, r_mm)
+            st.rerun()
         return
 
-    pnls = [safe_float(e["실현손익($)"], 0.0) for e in entries]
-    total_realized = sum(pnls)
-    wins = [p for p in pnls if p > 0]
-    losses = [abs(p) for p in pnls if p < 0]
-    win_rate = (len(wins) / len(pnls)) * 100.0 if pnls else 0.0
-    profit_factor = (sum(wins) / sum(losses)) if sum(losses) > 0 else (9.99 if sum(wins) > 0 else 0.0)
+    # ⭐ [17.0] Journal Agent 실행 — 종합 성과 + 8대 잘못된 매매 습관(Behavioral Biases) 자동 진단
+    journal_r = analyze_trade_journal()
+    jd = journal_r.details
+    total_realized = jd["total_pnl"]
+    win_rate = jd["win_rate"]
+    profit_factor = jd["profit_factor"]
+    expectancy = jd["expectancy"]
     tot_col = "#10b981" if total_realized >= 0 else "#f43f5e"
+    exp_col = "#10b981" if expectancy >= 0 else "#f43f5e"
 
     render_html(f"""
     <div class="journal-card">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:10px;">
-            <span style="font-size:14px; font-weight:800; color:#34d399;">📋 내 매매일지 퍼포먼스 (총 {len(entries)}건)</span>
-            <span class="badge badge-green">수동 복기 시스템</span>
+            <span style="font-size:14px; font-weight:800; color:#34d399;">📋 내 매매일지 종합 성과 (총 {jd['total']}건)</span>
+            <span class="badge badge-green">Journal Agent 행동재무학 진단</span>
         </div>
         <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; text-align:center; font-family:'JetBrains Mono';">
             <div style="background:rgba(0,0,0,.4); padding:10px; border-radius:8px;">
-                <div style="font-size:10px; color:#94a3b8;">누적 실현손익 ($)</div>
-                <div style="font-size:17px; font-weight:800; color:{tot_col};">${total_realized:+,.2f}</div>
-            </div>
-            <div style="background:rgba(0,0,0,.4); padding:10px; border-radius:8px;">
-                <div style="font-size:10px; color:#94a3b8;">누적 실현손익 (원화)</div>
-                <div style="font-size:15px; font-weight:800; color:{tot_col};">{total_realized*usd_krw:+,.0f}원</div>
+                <div style="font-size:10px; color:#94a3b8;">누적 실현손익</div>
+                <div style="font-size:16px; font-weight:800; color:{tot_col};">${total_realized:+,.2f}</div>
+                <div style="font-size:10px; color:#cbd5e1;">{total_realized*usd_krw:+,.0f}원</div>
             </div>
             <div style="background:rgba(0,0,0,.4); padding:10px; border-radius:8px;">
                 <div style="font-size:10px; color:#94a3b8;">실현 승률</div>
-                <div style="font-size:17px; font-weight:800; color:#fbbf24;">{win_rate:.1f}%</div>
+                <div style="font-size:16px; font-weight:800; color:#fbbf24;">{win_rate:.1f}%</div>
+                <div style="font-size:10px; color:#64748b;">평균수익 ${jd['avg_win']:,.0f}</div>
             </div>
             <div style="background:rgba(0,0,0,.4); padding:10px; border-radius:8px;">
                 <div style="font-size:10px; color:#94a3b8;">손익비 (PF)</div>
-                <div style="font-size:17px; font-weight:800; color:#38bdf8;">{profit_factor:.2f}</div>
+                <div style="font-size:16px; font-weight:800; color:#38bdf8;">{profit_factor:.2f}</div>
+                <div style="font-size:10px; color:#64748b;">평균손실 ${jd['avg_loss']:,.0f}</div>
+            </div>
+            <div style="background:rgba(0,0,0,.4); padding:10px; border-radius:8px;">
+                <div style="font-size:10px; color:#94a3b8;">건당 기대값</div>
+                <div style="font-size:16px; font-weight:800; color:{exp_col};">${expectancy:+,.1f}</div>
+                <div style="font-size:10px; color:#64748b;">Expectancy/Trade</div>
             </div>
         </div>
     </div>""")
+
+    if jd.get("biases"):
+        st.markdown("##### ⚠️ AI 매니저의 매매 습관 & 심리 편향 진단")
+        for b in jd["biases"]:
+            lvl_color = {"DANGER": "#f43f5e", "WARN": "#f59e0b", "INFO": "#38bdf8"}.get(b["level"], "#38bdf8")
+            lvl_badge = {"DANGER": "badge-red", "WARN": "badge-yellow", "INFO": "badge-blue"}.get(b["level"], "badge-blue")
+            render_html(f"""
+            <div style="background:#0f172a; border:1px solid {lvl_color}; border-left:4px solid {lvl_color}; border-radius:10px; padding:11px 15px; margin-bottom:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                    <span style="font-size:13px; font-weight:800; color:#fff;">{html.escape(b['type'])}</span>
+                    <span class="badge {lvl_badge}">{b['level']}</span>
+                </div>
+                <div style="font-size:11px; color:#cbd5e1; line-height:1.5;">{html.escape(b['desc'])}</div>
+            </div>""")
+
+    col_j1, col_j2 = st.columns(2)
+    with col_j1:
+        st.markdown("##### 👑 6대 대가 기법별 승률")
+        for s in jd.get("strategy_stats", []):
+            s_col = "#10b981" if s["총손익"] >= 0 else "#f43f5e"
+            wr_c = "#10b981" if s["승률"] >= 55 else ("#f59e0b" if s["승률"] >= 45 else "#f43f5e")
+            render_html(f"""
+            <div style="background:#0f172a; border:1px solid #1e293b; border-radius:9px; padding:9px 12px; margin-bottom:6px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
+                    <span style="font-size:12px; font-weight:800; color:#fff;">{html.escape(s['기법'])}</span>
+                    <span class="mono" style="font-size:12px; font-weight:800; color:{s_col};">${s['총손익']:+,.0f}</span>
+                </div>
+                <div class="mono" style="font-size:10px; color:#94a3b8; display:flex; gap:10px; flex-wrap:wrap;">
+                    <span>{s['거래']}건 ({s['승']}승 {s['패']}패)</span>
+                    <span style="color:{wr_c}; font-weight:700;">승률 {s['승률']:.1f}%</span>
+                    <span>PF {s['PF']:.2f}</span>
+                </div>
+            </div>""")
+
+    with col_j2:
+        st.markdown("##### 🧠 심리 상태별 & 종목별 성과")
+        for e in jd.get("emotion_stats", []):
+            e_col = "#10b981" if e["총손익"] >= 0 else "#f43f5e"
+            render_html(f"""
+            <div style="background:#0f172a; border:1px solid #1e293b; border-radius:9px; padding:8px 12px; margin-bottom:5px; display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:12px; font-weight:800; color:#fff;">{html.escape(e['심리'])}</span>
+                <span class="mono" style="font-size:11px; color:#cbd5e1;">{e['거래']}건 · 승률 {e['승률']:.0f}% · <b style="color:{e_col};">${e['총손익']:+,.0f}</b></span>
+            </div>""")
+        if jd.get("ticker_stats"):
+            top_tk_str = " | ".join(
+                f"<b>{html.escape(t['티커'])}</b> ${t['총손익']:+,.0f} ({t['승률']:.0f}%)"
+                for t in jd["ticker_stats"][:5]
+            )
+            render_html(f"""
+            <div style="background:rgba(56,189,248,.08); border:1px solid rgba(56,189,248,.25); border-radius:8px; padding:8px 11px; margin-top:6px; font-size:11px; color:#cbd5e1;">
+                🎯 <b>종목 Top 5:</b> {top_tk_str}
+            </div>""")
 
     df_j = pd.DataFrame(entries)
     st.dataframe(df_j.drop(columns=["id"], errors="ignore"), use_container_width=True, hide_index=True)
