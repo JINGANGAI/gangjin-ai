@@ -1,17 +1,19 @@
 # ==============================================================================
-# GANGJIN AI TRADER PRO — App (16.2 FINAL)
-# - xFinance 연동: 야후 파이낸스 장애 시 자동 Failover (데이터 무중단)
-# - Finnhub API 연동: 전문 뉴스 수집 및 악재 정밀 판독 (키 없을 시 구글 뉴스 폴백)
-# - ⭐ 지난 악재 recency 가중치 + 중복 기사 dedup + 가격 회복 자동 보정
+# GANGJIN AI TRADER PRO — App (16.2 FINAL) — Anti-Block Multi-Source Edition
+# - ⭐ 야후 파이낸스 차단(429/Crumb) 완벽 우회 4중 폴백 엔진 탑재:
+#     [1차] yfinance -> [2차] Yahoo v8 Direct JSON (브라우저 헤더)
+#     -> [3차] Nasdaq 공식 API (야후 무관) -> [4차] Stooq CSV API & xFinance
+# - ⭐ BTC/환율 이중화: 야후 차단 시 Binance/Coinbase & Open ER-API 자동 전환
 # - ⭐ [16.2] Patch A: 악재 최신성(bad_newest_hours) 반환
-# - ⭐ [16.2] Patch B: Finnhub 필터 후 0건이면 RSS 자동 폴백
-# - ⭐ [16.2] Patch C: 회복 판정을 악재 나이 기반으로 + 캐시 변이 방지
+# - ⭐ [16.2] Patch B: Finnhub 필터 후 0건이면 Google News RSS 자동 폴백
+# - ⭐ [16.2] Patch C: 회복 판정을 악재 나이 기반으로 + @st.cache_data 캐시 변이 방지
 # ==============================================================================
 import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
 import html
+import io
 import os
 import sqlite3
 import logging
@@ -55,9 +57,9 @@ except ImportError:
 # ==============================================================================
 CFG = {
     "cache": {
-        "history": 60, "indices": 60, "top_bar": 60, "market_cap": 3600,
-        "fear_greed": 1800, "macro": 300, "gamma": 1800, "scanner": 180,
-        "noise_filter": 60, "short_interest": 1800, "gex": 1800,
+        "history": 180, "indices": 180, "top_bar": 180, "market_cap": 3600,
+        "fear_greed": 1800, "macro": 300, "gamma": 1800, "scanner": 300,
+        "noise_filter": 120, "short_interest": 3600, "gex": 1800,
     },
     "ind": {
         "rsi_period": 14, "rsi_panic": 25.0, "rsi_oversold": 35.0, "rsi_overbought": 70.0,
@@ -111,7 +113,7 @@ CFG = {
         "bad_recent_threshold": 0.7,
         "recovery_pct_forgive": 3.0,
         "recovery_bonus": 6,
-        "recovery_min_age_hours": 24.0,   # ⭐ Patch C: 회복 보정 최소 악재 나이
+        "recovery_min_age_hours": 24.0,   # ⭐ Patch C: 회복 보정 최소 악재 나이 (24시간 경과 후)
     },
     "noise": {
         "minor_atr_mult": 1.35, "band_atr_mult": 1.8, "chandelier_atr": 2.8,
@@ -131,6 +133,16 @@ Path(CFG["paths"]["logs"]).mkdir(parents=True, exist_ok=True)
 Path(CFG["paths"]["db"]).parent.mkdir(parents=True, exist_ok=True)
 
 FINNHUB_KEY = os.getenv("FINNHUB_API_KEY", "").strip()
+
+BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 
 
 # ==============================================================================
@@ -291,7 +303,7 @@ div[data-baseweb="select"] > div { background-color: #0f1523 !important; border-
 .text-green { color: #10b981 !important; } .text-red { color: #f43f5e !important; }
 .text-yellow { color: #f59e0b !important; } .text-blue { color: #3b82f6 !important; }
 .text-purple { color: #a855f7 !important; } .text-indigo { color: #818cf8 !important; }
-.text-orange { color: #fb923c !important; }
+.text-orange { color: #fb923c !important; } .text-teal { color: #2dd4bf !important; }
 .badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; gap: 4px; letter-spacing: 0.3px; }
 .badge-green { background: rgba(16,185,129,.15); color: #34d399; border: 1px solid #10b981; }
 .badge-red { background: rgba(244,63,94,.15); color: #fb7185; border: 1px solid #f43f5e; }
@@ -377,119 +389,335 @@ setInterval(updateNYClock,1000);updateNYClock();
 
 
 # ==============================================================================
-# 6) DATA FETCHERS
+# 6) ANTI-BLOCK MULTI-SOURCE DATA ENGINE (야후 차단 완벽 우회 4중 폴백)
 # ==============================================================================
+def _period_to_days(period: str) -> int:
+    p = (period or "1y").lower().strip()
+    if p == "2d": return 5
+    if p == "5d": return 10
+    if p == "1mo": return 35
+    if p == "3mo": return 100
+    if p == "6mo": return 190
+    if p == "1y": return 370
+    if p == "2y": return 740
+    if p == "3y": return 1100
+    if p == "5y": return 1850
+    return 370
+
+
+def _fetch_yahoo_v8_direct(ticker: str, period: str = "1y") -> pd.DataFrame:
+    """yfinance 라이브러리 크럼(Crumb)/429 차단 시 query2/query1 v8 Chart JSON 직접 호출."""
+    enc = urllib.parse.quote(ticker)
+    for host in ("query2.finance.yahoo.com", "query1.finance.yahoo.com"):
+        try:
+            url = f"https://{host}/v8/finance/chart/{enc}?range={period}&interval=1d&includePrePost=false"
+            r = requests.get(url, headers=BROWSER_HEADERS, timeout=6)
+            if r.status_code != 200:
+                continue
+            j = r.json()
+            res = (j.get("chart", {}).get("result") or [None])[0]
+            if not res:
+                continue
+            ts_list = res.get("timestamp") or []
+            q = ((res.get("indicators", {}).get("quote") or [None])[0]) or {}
+            if not ts_list or not q.get("close"):
+                continue
+            df = pd.DataFrame({
+                "Open": q.get("open"),
+                "High": q.get("high"),
+                "Low": q.get("low"),
+                "Close": q.get("close"),
+                "Volume": q.get("volume"),
+            }, index=pd.to_datetime(ts_list, unit="s"))
+            df = df.dropna(subset=["Close"]).copy()
+            for col in ("Open", "High", "Low"):
+                df[col] = df[col].fillna(df["Close"])
+            df["Volume"] = df["Volume"].fillna(0.0)
+            if len(df) >= 2:
+                return df
+        except Exception as e:
+            LOG.warning("Yahoo v8 direct failed (%s) for %s: %s", host, ticker, e)
+    return pd.DataFrame()
+
+
+def _fetch_nasdaq_history(ticker: str, period: str = "1y") -> pd.DataFrame:
+    """야후 파이낸스 완전 차단 시 미국 나스닥 공식 API(api.nasdaq.com)로 시세 조회."""
+    if any(c in ticker for c in ("^", "=", "-")):
+        return pd.DataFrame()
+    days = _period_to_days(period)
+    to_dt = datetime.now()
+    from_dt = to_dt - timedelta(days=days)
+    headers = {
+        **BROWSER_HEADERS,
+        "Origin": "https://www.nasdaq.com",
+        "Referer": "https://www.nasdaq.com/",
+    }
+    for asset in ("stocks", "etf"):
+        try:
+            url = (
+                f"https://api.nasdaq.com/api/quote/{urllib.parse.quote(ticker.upper())}/historical"
+                f"?assetclass={asset}&fromdate={from_dt.strftime('%Y-%m-%d')}"
+                f"&limit={max(60, days)}&todate={to_dt.strftime('%Y-%m-%d')}"
+            )
+            r = requests.get(url, headers=headers, timeout=7)
+            if r.status_code != 200:
+                continue
+            rows = ((r.json().get("data") or {}).get("tradesTable") or {}).get("rows") or []
+            if not rows:
+                continue
+            parsed = []
+            for row in rows:
+                try:
+                    dt = pd.to_datetime(row.get("date"))
+                    cl = float(str(row.get("close", "")).replace("$", "").replace(",", "").strip())
+                    op = float(str(row.get("open", cl)).replace("$", "").replace(",", "").strip() or cl)
+                    hi = float(str(row.get("high", cl)).replace("$", "").replace(",", "").strip() or cl)
+                    lo = float(str(row.get("low", cl)).replace("$", "").replace(",", "").strip() or cl)
+                    vl_s = str(row.get("volume", "0")).replace(",", "").strip()
+                    vl = float(vl_s) if vl_s and vl_s != "N/A" else 0.0
+                    parsed.append({"Date": dt, "Open": op, "High": hi, "Low": lo, "Close": cl, "Volume": vl})
+                except Exception:
+                    continue
+            if len(parsed) >= 5:
+                df = pd.DataFrame(parsed).set_index("Date").sort_index()
+                return df
+        except Exception as e:
+            LOG.warning("Nasdaq fallback (%s) failed for %s: %s", asset, ticker, e)
+    return pd.DataFrame()
+
+
+def _fetch_stooq_history(ticker: str, period: str = "1y") -> pd.DataFrame:
+    """야후 파이낸스 차단 시 Stooq 글로벌 무료 CSV 엔드포인트 폴백."""
+    stooq_map = {
+        "^TNX": "10usy.b", "ES=F": "spy.us", "NQ=F": "qqq.us",
+        "YM=F": "dia.us", "CL=F": "uso.us", "^VIX": "vixy.us", "GC=F": "gld.us",
+        "BTC-USD": "btcusd", "KRW=X": "usdkrw",
+    }
+    sym = stooq_map.get(ticker.upper())
+    if not sym:
+        if any(c in ticker for c in ("^", "=", "-")):
+            return pd.DataFrame()
+        sym = f"{ticker.lower()}.us"
+    days = _period_to_days(period)
+    d2 = datetime.now().strftime("%Y%m%d")
+    d1 = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+    url = f"https://stooq.com/q/d/l/?s={sym}&d1={d1}&d2={d2}&i=d"
+    try:
+        r = requests.get(url, headers=BROWSER_HEADERS, timeout=7)
+        if r.status_code == 200 and "Date,Open,High,Low,Close" in r.text:
+            df = pd.read_csv(io.StringIO(r.text))
+            if not df.empty and "Close" in df.columns:
+                df["Date"] = pd.to_datetime(df["Date"])
+                df = df.set_index("Date").sort_index()
+                if "Volume" not in df.columns:
+                    df["Volume"] = 0.0
+                df["Volume"] = df["Volume"].fillna(0.0)
+                df = df.dropna(subset=["Close"])
+                if len(df) >= 2:
+                    return df
+    except Exception as e:
+        LOG.warning("Stooq fallback failed for %s: %s", ticker, e)
+    return pd.DataFrame()
+
+
 @st.cache_data(ttl=CFG["cache"]["top_bar"])
 def get_top_bar_data():
+    p, ch, k = 0.0, 0.0, 0.0
+    # 1) BTC-USD: Yahoo v8 -> yfinance -> Binance -> Coinbase
     try:
-        d = yf.Ticker("BTC-USD").history(period="2d")
-        p = safe_float(d['Close'].iloc[-1], 0.0)
-        pr = safe_float(d['Close'].iloc[-2], p)
-        ch = p - pr
+        d = _fetch_yahoo_v8_direct("BTC-USD", "5d")
+        if d.empty:
+            d = yf.Ticker("BTC-USD").history(period="5d")
+        if len(d) >= 2:
+            p = safe_float(d['Close'].iloc[-1], 0.0)
+            pr = safe_float(d['Close'].iloc[-2], p)
+            ch = p - pr
     except Exception:
-        p, ch = 0.0, 0.0
+        pass
+    if p <= 0:
+        try:
+            rb = requests.get("https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT", timeout=4)
+            if rb.status_code == 200:
+                jb = rb.json()
+                p = safe_float(jb.get("lastPrice"), 0.0)
+                ch = safe_float(jb.get("priceChange"), 0.0)
+        except Exception:
+            pass
+    if p <= 0:
+        try:
+            rc = requests.get("https://api.coinbase.com/v2/prices/BTC-USD/spot", timeout=4)
+            if rc.status_code == 200:
+                p = safe_float(rc.json().get("data", {}).get("amount"), 0.0)
+        except Exception:
+            pass
+
+    # 2) USD/KRW: Yahoo v8 -> yfinance -> Open ER-API
     try:
-        k = safe_float(yf.Ticker("KRW=X").history(period="2d")['Close'].iloc[-1], 0.0)
+        dk = _fetch_yahoo_v8_direct("KRW=X", "5d")
+        if dk.empty:
+            dk = yf.Ticker("KRW=X").history(period="5d")
+        if not dk.empty:
+            k = safe_float(dk['Close'].iloc[-1], 0.0)
     except Exception:
-        k = 0.0
+        pass
+    if k <= 0:
+        try:
+            rk = requests.get("https://open.er-api.com/v6/latest/USD", timeout=4)
+            if rk.status_code == 200:
+                k = safe_float(rk.json().get("rates", {}).get("KRW"), 0.0)
+        except Exception:
+            pass
     return p, ch, k
 
 
 @st.cache_data(ttl=CFG["cache"]["indices"])
 def get_market_indices():
     tickers = {
-        "10년물 국채": "^TNX", "S&P500 야간선물": "ES=F", "나스닥100 야간선물": "NQ=F",
-        "다우 야간선물": "YM=F", "WTI 원유": "CL=F", "VIX 변동성": "^VIX", "금 (Gold)": "GC=F",
+        "10년물 국채": ("^TNX", "IEF"),
+        "S&P500 야간선물": ("ES=F", "SPY"),
+        "나스닥100 야간선물": ("NQ=F", "QQQ"),
+        "다우 야간선물": ("YM=F", "DIA"),
+        "WTI 원유": ("CL=F", "USO"),
+        "VIX 변동성": ("^VIX", "VIXY"),
+        "금 (Gold)": ("GC=F", "GLD"),
     }
     out = []
-    for name, t in tickers.items():
+    for name, (t, proxy_etf) in tickers.items():
+        cur, prev = 0.0, 0.0
+        # 1차: Yahoo v8 Direct (Crumb 불필요)
         try:
-            tk = yf.Ticker(t)
-            try:
-                fi = tk.fast_info
-                cur = getattr(fi, 'last_price', None)
-                prev = getattr(fi, 'previous_close', None)
-                if cur and prev and float(cur) > 0 and float(prev) > 0:
-                    cur, prev = float(cur), float(prev)
-                    chg = ((cur - prev) / prev) * 100.0
-                    out.append({"name": name, "price": cur, "change": chg})
-                    continue
-            except Exception:
-                pass
-
-            d = tk.history(period="5d")
+            d = _fetch_yahoo_v8_direct(t, "5d")
             if len(d) >= 2:
                 cur = safe_float(d['Close'].iloc[-1], 0.0)
                 prev = safe_float(d['Close'].iloc[-2], 0.0)
-                chg = ((cur - prev) / prev) * 100 if prev > 0 else 0.0
-                out.append({"name": name, "price": cur, "change": chg})
-            else:
-                out.append({"name": name, "price": 0.0, "change": 0.0})
-        except Exception as e:
-            LOG.warning(f"get_market_indices error {name}: {e}")
-            out.append({"name": name, "price": 0.0, "change": 0.0})
+        except Exception:
+            pass
+
+        # 2차: yfinance fast_info / history
+        if cur <= 0 or prev <= 0:
+            try:
+                tk = yf.Ticker(t)
+                fi = tk.fast_info
+                c_fi = getattr(fi, 'last_price', None)
+                p_fi = getattr(fi, 'previous_close', None)
+                if c_fi and p_fi and float(c_fi) > 0 and float(p_fi) > 0:
+                    cur, prev = float(c_fi), float(p_fi)
+                else:
+                    d2 = tk.history(period="5d")
+                    if len(d2) >= 2:
+                        cur = safe_float(d2['Close'].iloc[-1], 0.0)
+                        prev = safe_float(d2['Close'].iloc[-2], 0.0)
+            except Exception:
+                pass
+
+        # 3차: Nasdaq / Stooq 프록시 폴백 (야후 전면 차단 시)
+        if cur <= 0 or prev <= 0:
+            try:
+                d3 = _fetch_nasdaq_history(proxy_etf, "1mo")
+                if d3.empty:
+                    d3 = _fetch_stooq_history(t, "1mo")
+                if len(d3) >= 2:
+                    cur = safe_float(d3['Close'].iloc[-1], 0.0)
+                    prev = safe_float(d3['Close'].iloc[-2], 0.0)
+            except Exception:
+                pass
+
+        chg = ((cur - prev) / prev) * 100.0 if prev > 0 else 0.0
+        out.append({"name": name, "price": cur, "change": chg})
     return out
+
+
+def _clean_tz(df: pd.DataFrame) -> pd.DataFrame:
+    if df is not None and not df.empty and getattr(df.index, "tz", None) is not None:
+        try:
+            df.index = df.index.tz_localize(None)
+        except Exception:
+            df.index = df.index.tz_convert(None)
+    return df
 
 
 @st.cache_data(ttl=CFG["cache"]["history"])
 def get_history(ticker: str, period: str = "1y") -> pd.DataFrame:
-    last_err = None
-    for attempt in range(2):
-        try:
-            h = yf.Ticker(ticker).history(period=period)
-            if h is not None and not h.empty and 'Close' in h.columns and h['Close'].notna().sum() >= 5:
-                if h.index.tz is not None:
-                    try:
-                        h.index = h.index.tz_localize(None)
-                    except Exception:
-                        h.index = h.index.tz_convert(None)
-                return h
-        except Exception as e:
-            last_err = e
-            if attempt == 0:
-                time.sleep(0.4)
+    t = ticker.strip().upper()
+    if not t:
+        return pd.DataFrame()
 
+    # 1차: Yahoo v8 Direct JSON (가장 빠르고 yfinance crumb 차단 영향을 덜 받음)
+    h_v8 = _fetch_yahoo_v8_direct(t, period)
+    if not h_v8.empty and len(h_v8) >= 5:
+        return _clean_tz(h_v8)
+
+    # 2차: yfinance 라이브러리
+    try:
+        h = yf.Ticker(t).history(period=period)
+        if h is not None and not h.empty and 'Close' in h.columns and h['Close'].notna().sum() >= 5:
+            return _clean_tz(h)
+    except Exception as e:
+        LOG.warning("yfinance history failed for %s: %s", t, e)
+
+    # 3차: Nasdaq 공식 API (야후 파이낸스 IP 차단 시 100% 독립 작동)
+    h_nq = _fetch_nasdaq_history(t, period)
+    if not h_nq.empty and len(h_nq) >= 5:
+        LOG.info("Fetched %s from Nasdaq API fallback", t)
+        return _clean_tz(h_nq)
+
+    # 4차: Stooq 무료 CSV API (야후 파이낸스 무관)
+    h_sq = _fetch_stooq_history(t, period)
+    if not h_sq.empty and len(h_sq) >= 5:
+        LOG.info("Fetched %s from Stooq CSV fallback", t)
+        return _clean_tz(h_sq)
+
+    # 5차: xfinance 라이브러리 (설치 시)
     if HAS_XFINANCE:
         try:
-            LOG.info(f"yfinance failed for {ticker}, falling back to xfinance")
-            xh = xf.Ticker(ticker).history(period=period)
+            xh = xf.Ticker(t).history(period=period)
             if xh is not None and not xh.empty:
-                if xh.index.tz is not None:
-                    try:
-                        xh.index = xh.index.tz_localize(None)
-                    except Exception:
-                        xh.index = xh.index.tz_convert(None)
-                return xh
+                return _clean_tz(xh)
         except Exception as e:
-            LOG.error(f"xfinance fallback failed for {ticker}: {e}")
+            LOG.error("xfinance fallback failed for %s: %s", t, e)
 
-    LOG.error("get_history final failure for %s: %s", ticker, last_err)
+    LOG.error("All 5 history sources failed for %s", t)
     return pd.DataFrame()
 
 
 @st.cache_data(ttl=CFG["cache"]["market_cap"])
 def get_market_cap(ticker: str):
-    try:
-        t = yf.Ticker(ticker)
+    # 1차: Finnhub (키가 있을 때)
+    if FINNHUB_KEY and HAS_FINNHUB_LIB:
         try:
-            fi = t.fast_info
-            mc = fi.get("market_cap") if hasattr(fi, "get") else None
-            if not mc and hasattr(fi, "__getitem__"):
-                try:
-                    mc = fi["market_cap"]
-                except Exception:
-                    mc = None
-            if mc:
-                return float(mc)
+            client = finnhub.Client(api_key=FINNHUB_KEY)
+            prof = client.company_profile2(symbol=ticker.upper()) or {}
+            mc_fh = safe_float(prof.get("marketCapitalization", 0.0), 0.0)
+            if mc_fh > 0:
+                return mc_fh * 1e6
         except Exception:
             pass
-        try:
-            m = t.info.get("marketCap", None)
-            return float(m) if m else None
-        except Exception:
-            return None
+    # 2차: yfinance fast_info (.info 호출은 429 유발하므로 지양)
+    try:
+        t = yf.Ticker(ticker)
+        fi = t.fast_info
+        mc = fi.get("market_cap") if hasattr(fi, "get") else None
+        if not mc and hasattr(fi, "__getitem__"):
+            try:
+                mc = fi["market_cap"]
+            except Exception:
+                mc = None
+        if mc and float(mc) > 0:
+            return float(mc)
     except Exception:
-        return None
+        pass
+    # 3차: Nasdaq API 시가총액 폴백
+    try:
+        url = f"https://api.nasdaq.com/api/quote/{urllib.parse.quote(ticker.upper())}/info?assetclass=stocks"
+        r = requests.get(url, headers={**BROWSER_HEADERS, "Referer": "https://www.nasdaq.com/"}, timeout=5)
+        if r.status_code == 200:
+            ks = ((r.json().get("data") or {}).get("keyStats") or {})
+            mc_str = str((ks.get("MarketCap") or {}).get("value", "")).replace(",", "").replace("$", "").strip()
+            if mc_str.isdigit():
+                return float(mc_str)
+    except Exception:
+        pass
+    return None
 
 
 @st.cache_data(ttl=CFG["cache"]["fear_greed"])
@@ -508,7 +736,8 @@ def get_fear_and_greed_index():
             raise ValueError("Fallback to VIX")
     except Exception:
         try:
-            vix = safe_float(yf.Ticker("^VIX").history(period="2d")['Close'].iloc[-1], 18.0)
+            vd = _fetch_yahoo_v8_direct("^VIX", "5d")
+            vix = safe_float(vd['Close'].iloc[-1], 18.0) if not vd.empty else 18.0
             if vix >= 30:
                 score, rating = 18.0, "Extreme Fear"
             elif vix >= 22:
@@ -559,7 +788,7 @@ def get_short_interest_data(ticker: str) -> dict:
         short_ratio = safe_float(info.get("shortRatio", 0.0), 0.0)
         shares_short = safe_float(info.get("sharesShort", 0.0), 0.0)
     except Exception as e:
-        LOG.warning("get_short_interest_data failed for %s: %s", ticker, e)
+        LOG.info("short_interest skipped/fallback for %s (Yahoo rate limit guard): %s", ticker, e)
     return {"short_pct": round(short_pct, 2), "days_to_cover": round(short_ratio, 2), "shares_short": shares_short}
 
 
@@ -609,7 +838,7 @@ def get_gamma_wall_and_gex_data(ticker: str, current_price: float = 0.0, exp_dat
     except Exception:
         return {"call_wall": None, "put_wall": None, "max_pain": None, "exp_dates": [],
                 "cp_oi_ratio": 1.0, "total_call_oi": 0, "total_put_oi": 0,
-                "gex_status": "분석 불가", "is_gamma_squeeze_zone": False}
+                "gex_status": "옵션 조회 제한 (기본 추세 모드)", "is_gamma_squeeze_zone": False}
 
 
 def evaluate_squeeze_potential(short_data, gex_data, current_price, box_high, vol_ratio):
@@ -909,7 +1138,7 @@ def normalize_indices_key(indices):
 
 
 # ==============================================================================
-# 10) MACRO + NEWS (⭐ Patch A 반영: bad_newest_hours 반환 / Patch B: RSS 폴백)
+# 10) MACRO + NEWS (⭐ Patch A: bad_newest_hours + Patch B: Finnhub 0건 시 RSS 폴백)
 # ==============================================================================
 @st.cache_data(ttl=CFG["cache"]["macro"])
 def analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=False):
@@ -966,7 +1195,6 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=False):
     except Exception:
         pass
 
-    # ⭐ 뉴스 집계
     news_items = []
     ncfg = CFG["news"]
     bad_recent_threshold = ncfg["bad_recent_threshold"]
@@ -974,20 +1202,20 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=False):
     ch_score = ebh_score = bh_score = gh_score = 0.0
     ch_cnt = ebh_cnt = bh_cnt = gh_cnt = 0
     bad_recent_cnt = 0
-    bad_newest_hours = 9999.0    # ⭐ Patch A: 가장 최근 악재의 경과시간
+    bad_newest_hours = 9999.0   # ⭐ Patch A: 가장 최근 악재 경과 시간(시간)
     seen_titles = set()
 
     def _classify_and_accumulate(raw_title, raw_link, raw_pub_str, pub_dt, date_display):
         nonlocal ch_score, ebh_score, bh_score, gh_score
         nonlocal ch_cnt, ebh_cnt, bh_cnt, gh_cnt, bad_recent_cnt, bad_newest_hours
         key = _normalize_title(raw_title)
-        if key in seen_titles:
+        if not key or key in seen_titles:
             return
         seen_titles.add(key)
 
         w = _recency_weight(pub_dt)
         if w <= 0.0:
-            return  # 7일 이상 완전 무시
+            return  # 7일 이상은 완전 무시
 
         tl = raw_title.lower()
         c_hit  = any(k in tl for k in ncfg["contract"])
@@ -1004,12 +1232,9 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=False):
         if bad_hit:
             bh_score += 12 * w
             bh_cnt += 1
+            bad_newest_hours = min(bad_newest_hours, _hours_since(pub_dt))
             if w >= bad_recent_threshold:
                 bad_recent_cnt += 1
-            # ⭐ Patch A: 가장 최근 악재의 경과시간 추적
-            _h = _hours_since(pub_dt)
-            if _h < bad_newest_hours:
-                bad_newest_hours = _h
         if g_hit:
             gh_score += 4 * w
             gh_cnt += 1
@@ -1020,9 +1245,7 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=False):
         elif g_hit: sentiment, badge_class = "🌍 거시 이슈", "badge-yellow"
         else: sentiment, badge_class = "📰 일반/중립", "badge-blue"
 
-        age_note = ""
-        if 0 < w < 1.0:
-            age_note = f" · 가중치 {w:.2f}"
+        age_note = f" · 가중치 {w:.2f}" if 0 < w < 1.0 else ""
 
         news_items.append({
             "title": html.escape(raw_title),
@@ -1032,8 +1255,7 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=False):
             "badge_class": badge_class,
         })
 
-    # ⭐ 1차: Finnhub
-    finnhub_success = False
+    # ⭐ 1차 시도: Finnhub API (Patch B: 필터링 후 유효 기사가 0건이면 RSS로 자동 폴백)
     if FINNHUB_KEY and HAS_FINNHUB_LIB:
         try:
             client = finnhub.Client(api_key=FINNHUB_KEY)
@@ -1042,7 +1264,6 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=False):
             to_date = today.strftime('%Y-%m-%d')
             fh_news = client.company_news(ticker, _from=from_date, to=to_date)
             if fh_news:
-                finnhub_success = True
                 for item in fh_news[:20]:
                     raw_title = item.get('headline', '') or ''
                     raw_link = item.get('url', '#') or '#'
@@ -1057,8 +1278,8 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=False):
         except Exception as e:
             LOG.warning(f"Finnhub news fetch failed for {ticker}: {e}")
 
-    # ⭐ 2차 폴백 (Patch B: 필터 후 0건이면 RSS 자동 폴백)
-    if (not finnhub_success) or (len(news_items) == 0):
+    # ⭐ 2차 폴백: Google News RSS (Finnhub 미사용 또는 필터 후 0건일 때 자동 작동)
+    if len(news_items) == 0:
         query = urllib.parse.quote(f"{ticker} stock news when:7d")
         url = f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
         try:
@@ -1118,7 +1339,7 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=False):
         "earnings_bull_hits": ebh_cnt,
         "bad_news_hits": bad_recent_cnt,
         "bad_news_total": bh_cnt,
-        "bad_newest_hours": round(bad_newest_hours, 1) if bad_newest_hours < 9999 else None,  # ⭐ Patch A
+        "bad_newest_hours": round(bad_newest_hours, 1),  # ⭐ Patch A
         "geo_hits": gh_cnt,
         "catalyst_score": round(catalyst_score, 2),
         "catalyst_summary": catalyst_summary,
@@ -1231,22 +1452,30 @@ def evaluate_holding_noise_filter_cached(ticker, buy_price, qty, target_roi_pct,
 
 
 # ==============================================================================
-# 12) SCANNER / BACKTEST / WFA / RISK
+# 12) SCANNER / BACKTEST / WFA / RISK (야후 차단 시 개별 폴백 지원)
 # ==============================================================================
 @st.cache_data(ttl=CFG["cache"]["scanner"])
 def scan_watchlist(ticker_string):
     tickers = list(dict.fromkeys(t.strip().upper() for t in ticker_string.replace(',', ' ').split() if t.strip()))
     if not tickers:
         return []
+    data = None
     try:
         data = yf.download(tickers, period="3mo", group_by='ticker', threads=True, progress=False)
     except Exception:
-        return []
+        data = None
     signals = []
     for t in tickers:
         try:
-            df = data[t].dropna() if len(tickers) > 1 else data.dropna()
-            if len(df) < 20:
+            df = pd.DataFrame()
+            if data is not None and not data.empty:
+                try:
+                    df = data[t].dropna() if len(tickers) > 1 else data.dropna()
+                except Exception:
+                    df = pd.DataFrame()
+            if df.empty or len(df) < 20:
+                df = get_history(t, period="3mo")
+            if df.empty or len(df) < 20:
                 continue
             close, high, low, vol = df['Close'], df['High'], df['Low'], df['Volume']
             curr_price = safe_float(close.iloc[-1], 0.0)
@@ -1448,16 +1677,12 @@ def build_full_risk_report(holdings, benchmark="SPY"):
         return {}
     tickers = [h["ticker"].upper() for h in holdings]
     all_syms = list(dict.fromkeys(tickers + [benchmark]))
-    try:
-        raw = yf.download(all_syms, period="6mo", group_by="ticker", threads=True, progress=False)
-    except Exception:
-        return {}
     close_dict = {}
     for s in all_syms:
         try:
-            s_df = raw[s]["Close"].dropna() if len(all_syms) > 1 else raw["Close"].dropna()
-            if len(s_df) >= 20:
-                close_dict[s] = s_df
+            df_s = get_history(s, period="6mo")
+            if not df_s.empty and len(df_s) >= 20:
+                close_dict[s] = df_s["Close"].dropna()
         except Exception:
             pass
     valid_holdings = [h for h in holdings if h["ticker"].upper() in close_dict]
@@ -1520,7 +1745,7 @@ def build_full_risk_report(holdings, benchmark="SPY"):
 
 
 # ==============================================================================
-# 14) TAB 1: 개별 종목 분석 (⭐ Patch C 반영)
+# 14) TAB 1: 개별 종목 분석 (⭐ Patch C: 악재 나이 기반 회복 판정 + 캐시 변이 방지)
 # ==============================================================================
 def render_tab_analysis(indices, usd_krw):
     if "selected_ticker" not in st.session_state:
@@ -1541,7 +1766,10 @@ def render_tab_analysis(indices, usd_krw):
     safe_ticker = html.escape(ticker)
     hist = get_history(ticker)
     if hist.empty or len(hist) < 25:
-        st.warning(f"'{safe_ticker}' 데이터가 없습니다.")
+        st.warning(f"'{safe_ticker}' 시세 데이터를 불러오지 못했습니다. 잠시 후 다시 시도하거나 아래 캐시 초기화 버튼을 눌러주세요.")
+        if st.button("🔄 캐시 초기화 & 재연결", key="retry_hist_btn"):
+            st.cache_data.clear()
+            st.rerun()
         return
     hist = hist.copy()
     current_price = safe_float(hist['Close'].iloc[-1], 0.0)
@@ -1604,37 +1832,27 @@ def render_tab_analysis(indices, usd_krw):
     use_llm = bool(os.getenv("OPENAI_API_KEY"))
     cat = analyze_macro_and_stock_catalysts(ticker, indices_key, use_llm=use_llm)
 
-    # ⭐⭐⭐ Patch C: 악재 나이 기반 회복 보정 + 캐시 변이 방지 ⭐⭐⭐
+    # ⭐⭐⭐ [16.2] Patch C: 악재 나이 기반 회복 판정 + 캐시 변이 방지 ⭐⭐⭐
     recovery_bonus = 0
     recovery_note = ""
+    catalyst_summary_display = list(cat['catalyst_summary'])  # 캐시 원본 변이 방지 복사본
     try:
-        has_any_bad = (cat.get("bad_news_hits", 0) >= 1 or cat.get("bad_news_total", 0) >= 1)
-        bad_age_h = cat.get("bad_newest_hours")
-        min_age = CFG["news"]["recovery_min_age_hours"]
-
-        if has_any_bad and bad_age_h is not None and bad_age_h >= min_age:
-            h_ref = get_history(ticker, period="1mo")
-            if len(h_ref) >= 3:
-                # 악재 경과일수에 맞춘 참조 종가 (2~5거래일 범위)
-                trading_days_since = max(2, min(5, int(round(bad_age_h / 24.0)) + 1))
-                idx_ref = max(1, len(h_ref) - trading_days_since)
-                ref_px = float(h_ref['Close'].iloc[idx_ref])
+        newest_bad_h = safe_float(cat.get("bad_newest_hours", 9999.0), 9999.0)
+        min_age_h = CFG["news"]["recovery_min_age_hours"]
+        if (cat.get("bad_news_hits", 0) >= 1 or cat.get("bad_news_total", 0) >= 1) and newest_bad_h >= min_age_h:
+            # 악재 발생 시점에 맞춰 비교 기준일(2~6영업일 전) 동적 산정 (이미 로드된 hist 재사용)
+            lookback_bars = max(2, min(6, int(round(newest_bad_h / 24.0)) + 1))
+            if len(hist) > lookback_bars:
+                ref_px = float(hist['Close'].iloc[-(lookback_bars + 1)])
                 if ref_px > 0:
                     rec_pct = (current_price / ref_px - 1) * 100
                     if rec_pct >= CFG["news"]["recovery_pct_forgive"]:
                         recovery_bonus = int(CFG["news"]["recovery_bonus"])
-                        recovery_note = (
-                            f"악재({bad_age_h/24:.1f}일 경과) 후 +{rec_pct:.1f}% 회복 "
-                            f"→ 시장 소화 완료 판정 (+{recovery_bonus}점 환급)"
-                        )
+                        recovery_note = f"악재({newest_bad_h:.0f}h 전) 후 +{rec_pct:.1f}% 회복 → 시장 소화 완료 (+{recovery_bonus}점 환급)"
     except Exception:
         pass
-
-    # ⭐ 캐시 변이 방지: dict/list 얕은 복사
-    cat = dict(cat)
-    cat["catalyst_summary"] = list(cat.get("catalyst_summary", []))
     if recovery_note:
-        cat["catalyst_summary"].append(f"💡 {recovery_note}")
+        catalyst_summary_display.append(f"💡 {recovery_note}")
 
     noise_eval = evaluate_holding_noise_filter(ticker, hist)
     short_data = get_short_interest_data(ticker)
@@ -1795,7 +2013,7 @@ def render_tab_analysis(indices, usd_krw):
     </div>""")
 
     mb = "".join([f"<div style='margin-bottom:2px;'>• {html.escape(m)}</div>" for m in cat['macro_alerts']])
-    cb = "".join([f"<div style='margin-bottom:2px;'>• {html.escape(c)}</div>" for c in cat['catalyst_summary']])
+    cb = "".join([f"<div style='margin-bottom:2px;'>• {html.escape(c)}</div>" for c in catalyst_summary_display])
     render_html(f"""
     <div class="verdict-card" style="border-color:{fv_color};">
         <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,.12); padding-bottom:8px;">
