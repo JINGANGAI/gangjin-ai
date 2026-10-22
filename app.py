@@ -1,9 +1,10 @@
 # ==============================================================================
-# GANGJIN AI TRADER PRO — App (16.2 FINAL) — Anti-Block Multi-Source Edition
-# - ⭐ 야후 파이낸스 차단(429/Crumb) 완벽 우회 4중 폴백 엔진 탑재:
-#     [1차] yfinance -> [2차] Yahoo v8 Direct JSON (브라우저 헤더)
-#     -> [3차] Nasdaq 공식 API (야후 무관) -> [4차] Stooq CSV API & xFinance
-# - ⭐ BTC/환율 이중화: 야후 차단 시 Binance/Coinbase & Open ER-API 자동 전환
+# GANGJIN AI TRADER PRO — App (16.3 FINAL) — Real-Time Live Sync & Anti-Block Edition
+# - ⭐ 실시간 시세 동기화 엔진 탑재 (전일 종가 지연 표시 버그 완벽 해결):
+#     [1] Yahoo v8 1d/5m meta(regularMarketPrice) + 프리/애프터마켓 실시간 추출
+#     [2] Nasdaq 공식 실시간 API (/api/quote/info primaryData & secondaryData + charting latestIntradayData)
+#     [3] Finnhub Real-Time Quote (/api/v1/quote) + CNBC 실시간 선물/지수 API 연동
+#     [4] 다중 소스 중 '가장 최신 거래일(trade_date)' 시세를 자동 선택하여 일봉 차트(get_history) 마지막 봉에 실시간 병합(Stitching)
 # - ⭐ [16.2] Patch A: 악재 최신성(bad_newest_hours) 반환
 # - ⭐ [16.2] Patch B: Finnhub 필터 후 0건이면 Google News RSS 자동 폴백
 # - ⭐ [16.2] Patch C: 회복 판정을 악재 나이 기반으로 + @st.cache_data 캐시 변이 방지
@@ -57,9 +58,9 @@ except ImportError:
 # ==============================================================================
 CFG = {
     "cache": {
-        "history": 180, "indices": 180, "top_bar": 180, "market_cap": 3600,
-        "fear_greed": 1800, "macro": 300, "gamma": 1800, "scanner": 300,
-        "noise_filter": 120, "short_interest": 3600, "gex": 1800,
+        "live_quote": 20, "history": 60, "indices": 30, "top_bar": 30, "market_cap": 3600,
+        "fear_greed": 1800, "macro": 300, "gamma": 1800, "scanner": 120,
+        "noise_filter": 60, "short_interest": 3600, "gex": 1800,
     },
     "ind": {
         "rsi_period": 14, "rsi_panic": 25.0, "rsi_oversold": 35.0, "rsi_overbought": 70.0,
@@ -142,6 +143,8 @@ BROWSER_HEADERS = {
     ),
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "en-US,en;q=0.9",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
 }
 
 
@@ -188,10 +191,30 @@ def safe_url(url: str) -> str:
 
 def safe_float(val, default: float = 0.0) -> float:
     try:
+        if val is None:
+            return default
+        if isinstance(val, str):
+            val = re.sub(r"[^0-9.-]", "", val)
+            if not val or val in ("-", ".", "-."):
+                return default
         f = float(val)
         return default if (np.isnan(f) or np.isinf(f)) else f
     except Exception:
         return default
+
+
+def _ny_today_str() -> str:
+    try:
+        return pd.Timestamp.now(tz="America/New_York").strftime("%Y-%m-%d")
+    except Exception:
+        return datetime.utcnow().strftime("%Y-%m-%d")
+
+
+def _ts_to_ny_date_str(ts_val) -> str:
+    try:
+        return pd.to_datetime(int(ts_val), unit="s", utc=True).tz_convert("America/New_York").strftime("%Y-%m-%d")
+    except Exception:
+        return ""
 
 
 def compute_wilder_rsi(close: pd.Series, period: int = 14) -> pd.Series:
@@ -389,7 +412,7 @@ setInterval(updateNYClock,1000);updateNYClock();
 
 
 # ==============================================================================
-# 6) ANTI-BLOCK MULTI-SOURCE DATA ENGINE (야후 차단 완벽 우회 4중 폴백)
+# 6) REAL-TIME QUOTE & MULTI-SOURCE DATA ENGINE (전일 종가 지연 방지 + 5중 폴백)
 # ==============================================================================
 def _period_to_days(period: str) -> int:
     p = (period or "1y").lower().strip()
@@ -405,12 +428,401 @@ def _period_to_days(period: str) -> int:
     return 370
 
 
-def _fetch_yahoo_v8_direct(ticker: str, period: str = "1y") -> pd.DataFrame:
-    """yfinance 라이브러리 크럼(Crumb)/429 차단 시 query2/query1 v8 Chart JSON 직접 호출."""
-    enc = urllib.parse.quote(ticker)
+def _parse_nasdaq_date(ts_str: str) -> str:
+    """'Oct 21, 2026 4:00 PM ET' 또는 '2026-10-21 16:00:00' 등에서 YYYY-MM-DD 추출."""
+    if not ts_str:
+        return ""
+    s = str(ts_str).strip()
+    m_iso = re.search(r"(\d{4}-\d{2}-\d{2})", s)
+    if m_iso:
+        return m_iso.group(1)
+    m_us = re.search(r"([A-Za-z]{3,9}\s+\d{1,2},\s+\d{4})", s)
+    if m_us:
+        try:
+            return pd.to_datetime(m_us.group(1)).strftime("%Y-%m-%d")
+        except Exception:
+            pass
+    m_slash = re.search(r"(\d{1,2}/\d{1,2}/\d{4})", s)
+    if m_slash:
+        try:
+            return pd.to_datetime(m_slash.group(1)).strftime("%Y-%m-%d")
+        except Exception:
+            pass
+    return ""
+
+
+def _quote_from_yahoo_v8(ticker: str) -> dict:
+    """Yahoo v8 1d/5m + 5d/1d meta.regularMarketPrice 기반 실시간 시세 및 프리/애프터마켓 추출."""
+    enc = urllib.parse.quote(ticker.strip().upper())
+    cb = int(time.time() // 15)
     for host in ("query2.finance.yahoo.com", "query1.finance.yahoo.com"):
         try:
-            url = f"https://{host}/v8/finance/chart/{enc}?range={period}&interval=1d&includePrePost=false"
+            url = f"https://{host}/v8/finance/chart/{enc}?range=1d&interval=5m&includePrePost=true&_={cb}"
+            r = requests.get(url, headers=BROWSER_HEADERS, timeout=5)
+            if r.status_code != 200:
+                continue
+            res = ((r.json().get("chart") or {}).get("result") or [None])[0]
+            if not res:
+                continue
+            meta = res.get("meta") or {}
+            reg_px = safe_float(meta.get("regularMarketPrice"), 0.0)
+            if reg_px <= 0:
+                continue
+            prev_cl = safe_float(meta.get("previousClose") or meta.get("chartPreviousClose"), 0.0)
+            reg_ts = meta.get("regularMarketTime")
+            trade_date = _ts_to_ny_date_str(reg_ts) if reg_ts else _ny_today_str()
+            day_h = safe_float(meta.get("regularMarketDayHigh"), reg_px)
+            day_l = safe_float(meta.get("regularMarketDayLow"), reg_px)
+            day_o = safe_float(meta.get("regularMarketOpen"), 0.0)
+            day_v = safe_float(meta.get("regularMarketVolume"), 0.0)
+
+            ts_list = res.get("timestamp") or []
+            q = ((res.get("indicators") or {}).get("quote") or [None])[0] or {}
+            closes = q.get("close") or []
+            opens = q.get("open") or []
+            highs = q.get("high") or []
+            lows = q.get("low") or []
+            vols = q.get("volume") or []
+
+            ext_price, ext_chg, ext_chg_pct, ext_label = 0.0, 0.0, 0.0, ""
+            if ts_list and closes:
+                idx_ny = pd.to_datetime(ts_list, unit="s", utc=True).tz_convert("America/New_York")
+                df_1m = pd.DataFrame({
+                    "Open": opens, "High": highs, "Low": lows, "Close": closes, "Volume": vols
+                }, index=idx_ny).dropna(subset=["Close"])
+                if not df_1m.empty:
+                    latest_day = df_1m.index[-1].date()
+                    day_df = df_1m[df_1m.index.date == latest_day]
+                    reg_df = day_df.between_time("09:30", "16:00")
+                    if not reg_df.empty:
+                        if day_o <= 0:
+                            day_o = safe_float(reg_df["Open"].iloc[0], reg_px)
+                        day_h = max(day_h, safe_float(reg_df["High"].max(), reg_px))
+                        day_l = min(day_l if day_l > 0 else reg_px, safe_float(reg_df["Low"].min(), reg_px))
+                        if day_v <= 0:
+                            day_v = safe_float(reg_df["Volume"].sum(), 0.0)
+                    last_bar_ts = day_df.index[-1]
+                    last_bar_px = safe_float(day_df["Close"].iloc[-1], 0.0)
+                    hm = last_bar_ts.hour * 60 + last_bar_ts.minute
+                    if last_bar_px > 0 and not any(c in ticker for c in ("^", "=", "-")):
+                        if hm >= 960 and abs(last_bar_px - reg_px) > 1e-4:
+                            ext_price = last_bar_px
+                            ext_chg = ext_price - reg_px
+                            ext_chg_pct = (ext_chg / reg_px) * 100.0 if reg_px > 0 else 0.0
+                            ext_label = "애프터마켓"
+                        elif 240 <= hm < 570 and abs(last_bar_px - reg_px) > 1e-4:
+                            ext_price = last_bar_px
+                            ext_chg = ext_price - reg_px
+                            ext_chg_pct = (ext_chg / reg_px) * 100.0 if reg_px > 0 else 0.0
+                            ext_label = "프리마켓"
+
+            if prev_cl <= 0 or abs(prev_cl - reg_px) < 1e-6:
+                try:
+                    u5 = f"https://{host}/v8/finance/chart/{enc}?range=5d&interval=1d&_={cb}"
+                    r5 = requests.get(u5, headers=BROWSER_HEADERS, timeout=4)
+                    if r5.status_code == 200:
+                        res5 = ((r5.json().get("chart") or {}).get("result") or [None])[0] or {}
+                        ts5 = res5.get("timestamp") or []
+                        cl5 = (((res5.get("indicators") or {}).get("quote") or [None])[0] or {}).get("close") or []
+                        valid_pairs = [
+                            (_ts_to_ny_date_str(t_), safe_float(c_, 0.0))
+                            for t_, c_ in zip(ts5, cl5) if safe_float(c_, 0.0) > 0
+                        ]
+                        prior = [c_ for d_, c_ in valid_pairs if d_ and d_ < trade_date]
+                        if prior:
+                            prev_cl = prior[-1]
+                except Exception:
+                    pass
+
+            if prev_cl <= 0:
+                prev_cl = reg_px
+            chg = reg_px - prev_cl
+            chg_pct = (chg / prev_cl) * 100.0 if prev_cl > 0 else 0.0
+            return {
+                "price": reg_px, "prev_close": prev_cl, "change": chg, "change_pct": chg_pct,
+                "open": day_o if day_o > 0 else prev_cl,
+                "high": max(day_h, reg_px), "low": min(day_l if day_l > 0 else reg_px, reg_px),
+                "volume": day_v, "trade_date": trade_date,
+                "ext_price": ext_price, "ext_change": ext_chg,
+                "ext_change_pct": ext_chg_pct, "ext_label": ext_label,
+                "source": "Yahoo Real-Time",
+            }
+        except Exception as e:
+            LOG.warning("Yahoo live quote failed (%s) for %s: %s", host, ticker, e)
+    return {}
+
+
+def _quote_from_nasdaq(ticker: str) -> dict:
+    """Nasdaq 실시간 Quote API (/api/quote/{symbol}/info + charting latestIntradayData)."""
+    t = ticker.strip().upper()
+    if any(c in t for c in ("^", "=", "-")):
+        return {}
+    headers = {
+        **BROWSER_HEADERS,
+        "Origin": "https://www.nasdaq.com",
+        "Referer": "https://www.nasdaq.com/",
+    }
+    for asset in ("stocks", "etf"):
+        try:
+            url = f"https://api.nasdaq.com/api/quote/{urllib.parse.quote(t)}/info?assetclass={asset}"
+            r = requests.get(url, headers=headers, timeout=5)
+            if r.status_code != 200:
+                continue
+            data = (r.json() or {}).get("data") or {}
+            prim = data.get("primaryData") or {}
+            sec = data.get("secondaryData") or {}
+            ks = data.get("keyStats") or {}
+            px = safe_float(prim.get("lastSalePrice"), 0.0)
+            if px <= 0:
+                continue
+            net_chg = safe_float(prim.get("netChange"), 0.0)
+            delta_ind = str(prim.get("deltaIndicator") or "").lower()
+            if delta_ind == "down" and net_chg > 0:
+                net_chg = -net_chg
+            elif delta_ind == "up" and net_chg < 0:
+                net_chg = abs(net_chg)
+            prev_cl = px - net_chg if (px - net_chg) > 0 else px
+            chg_pct = safe_float(prim.get("percentageChange"), 0.0)
+            if chg_pct == 0.0 and prev_cl > 0 and net_chg != 0.0:
+                chg_pct = (net_chg / prev_cl) * 100.0
+            elif net_chg < 0 and chg_pct > 0:
+                chg_pct = -chg_pct
+
+            vol = safe_float(prim.get("volume"), 0.0)
+            trade_date = _parse_nasdaq_date(prim.get("lastTradeTimestamp") or "")
+            if not trade_date:
+                trade_date = _ny_today_str()
+
+            day_h, day_l = px, px
+            dr_str = str(((ks.get("dayrange") or {}).get("value")) or "")
+            nums = [safe_float(x, 0.0) for x in re.findall(r"\d+(?:\.\d+)?", dr_str) if safe_float(x, 0.0) > 0]
+            if len(nums) >= 2:
+                day_l, day_h = min(nums), max(nums)
+
+            ext_price, ext_chg, ext_chg_pct, ext_label = 0.0, 0.0, 0.0, ""
+            if isinstance(sec, dict) and sec.get("lastSalePrice"):
+                ep = safe_float(sec.get("lastSalePrice"), 0.0)
+                if ep > 0 and abs(ep - px) > 1e-4:
+                    ext_price = ep
+                    ec = safe_float(sec.get("netChange"), ep - px)
+                    s_ind = str(sec.get("deltaIndicator") or "").lower()
+                    if s_ind == "down" and ec > 0:
+                        ec = -ec
+                    ext_chg = ec
+                    ext_chg_pct = safe_float(sec.get("percentageChange"), (ec / px) * 100.0 if px > 0 else 0.0)
+                    if ext_chg < 0 and ext_chg_pct > 0:
+                        ext_chg_pct = -ext_chg_pct
+                    sec_ts = str(sec.get("lastTradeTimestamp") or "").upper()
+                    ext_label = "프리마켓" if "PRE" in sec_ts or "AM" in sec_ts else "애프터마켓"
+
+            return {
+                "price": px, "prev_close": prev_cl, "change": net_chg, "change_pct": chg_pct,
+                "open": prev_cl, "high": max(day_h, px), "low": min(day_l, px),
+                "volume": vol, "trade_date": trade_date,
+                "ext_price": ext_price, "ext_change": ext_chg,
+                "ext_change_pct": ext_chg_pct, "ext_label": ext_label,
+                "source": "Nasdaq Real-Time",
+            }
+        except Exception as e:
+            LOG.warning("Nasdaq live quote failed (%s) for %s: %s", asset, t, e)
+    return {}
+
+
+def _quote_from_finnhub(ticker: str) -> dict:
+    """Finnhub 실시간 Quote (/api/v1/quote)."""
+    t = ticker.strip().upper()
+    if not FINNHUB_KEY or any(c in t for c in ("^", "=", "-")):
+        return {}
+    try:
+        r = requests.get(
+            f"https://finnhub.io/api/v1/quote?symbol={urllib.parse.quote(t)}&token={FINNHUB_KEY}",
+            headers=BROWSER_HEADERS, timeout=4
+        )
+        if r.status_code == 200:
+            j = r.json() or {}
+            px = safe_float(j.get("c"), 0.0)
+            if px > 0:
+                prev_cl = safe_float(j.get("pc"), px)
+                chg = safe_float(j.get("d"), px - prev_cl)
+                chg_pct = safe_float(j.get("dp"), ((chg / prev_cl) * 100.0) if prev_cl > 0 else 0.0)
+                ts_val = j.get("t")
+                trade_date = _ts_to_ny_date_str(ts_val) if ts_val else _ny_today_str()
+                return {
+                    "price": px, "prev_close": prev_cl, "change": chg, "change_pct": chg_pct,
+                    "open": safe_float(j.get("o"), prev_cl),
+                    "high": max(safe_float(j.get("h"), px), px),
+                    "low": min(safe_float(j.get("l"), px) or px, px),
+                    "volume": 0.0, "trade_date": trade_date,
+                    "ext_price": 0.0, "ext_change": 0.0, "ext_change_pct": 0.0, "ext_label": "",
+                    "source": "Finnhub Real-Time",
+                }
+    except Exception as e:
+        LOG.warning("Finnhub quote failed for %s: %s", t, e)
+    return {}
+
+
+def _quote_from_cnbc(ticker: str) -> dict:
+    """CNBC 실시간 Quote JSON 웹서비스 (선물/지수/주식 폴백)."""
+    cnbc_map = {
+        "^TNX": "US10Y", "ES=F": "@SP.1", "NQ=F": "@ND.1",
+        "YM=F": "@DJ.1", "CL=F": "@CL.1", "^VIX": ".VIX", "GC=F": "@GC.1",
+        "BTC-USD": "BTC.CM=", "KRW=X": "KRW=",
+    }
+    t = ticker.strip().upper()
+    sym = cnbc_map.get(t, t)
+    try:
+        url = (
+            "https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol"
+            f"?symbols={urllib.parse.quote(sym)}&requestMethod=itv&noform=1&partnerId=2&fund=1&exthrs=1&output=json&events=1"
+        )
+        r = requests.get(url, headers=BROWSER_HEADERS, timeout=5)
+        if r.status_code == 200:
+            qq = (((r.json() or {}).get("FormattedQuoteResult") or {}).get("FormattedQuote") or [None])[0] or {}
+            px = safe_float(qq.get("last"), 0.0)
+            if px > 0:
+                if t == "^TNX" and px > 20:
+                    px = px / 10.0
+                chg = safe_float(qq.get("change"), 0.0)
+                prev_cl = safe_float(qq.get("previous_day_closing"), px - chg)
+                if prev_cl <= 0:
+                    prev_cl = px - chg if (px - chg) > 0 else px
+                chg_pct = safe_float(qq.get("change_pct"), ((chg / prev_cl) * 100.0) if prev_cl > 0 else 0.0)
+                trade_date = _parse_nasdaq_date(qq.get("last_time") or "") or _ny_today_str()
+                return {
+                    "price": px, "prev_close": prev_cl, "change": chg, "change_pct": chg_pct,
+                    "open": safe_float(qq.get("open"), prev_cl),
+                    "high": max(safe_float(qq.get("high"), px), px),
+                    "low": min(safe_float(qq.get("low"), px) or px, px),
+                    "volume": safe_float(qq.get("volume"), 0.0),
+                    "trade_date": trade_date,
+                    "ext_price": 0.0, "ext_change": 0.0, "ext_change_pct": 0.0, "ext_label": "",
+                    "source": "CNBC Real-Time",
+                }
+    except Exception as e:
+        LOG.warning("CNBC quote failed for %s: %s", t, e)
+    return {}
+
+
+@st.cache_data(ttl=CFG["cache"]["live_quote"])
+def get_realtime_quote(ticker: str) -> dict:
+    """다중 실시간 소스(Nasdaq, Yahoo 1d/5m, Finnhub, CNBC)를 조회해 가장 최신 거래일(trade_date) 시세를 반환."""
+    t = ticker.strip().upper()
+    if not t:
+        return {}
+    candidates = []
+    # 주식/ETF는 Nasdaq 실시간 API와 Yahoo 1d/5m를 모두 조회하여 최신 날짜를 교차 검증
+    if not any(c in t for c in ("^", "=", "-")):
+        q_nq = _quote_from_nasdaq(t)
+        if q_nq.get("price", 0.0) > 0:
+            candidates.append(q_nq)
+        q_yh = _quote_from_yahoo_v8(t)
+        if q_yh.get("price", 0.0) > 0:
+            candidates.append(q_yh)
+        if FINNHUB_KEY:
+            q_fh = _quote_from_finnhub(t)
+            if q_fh.get("price", 0.0) > 0:
+                candidates.append(q_fh)
+        if not candidates:
+            q_cb = _quote_from_cnbc(t)
+            if q_cb.get("price", 0.0) > 0:
+                candidates.append(q_cb)
+    else:
+        q_yh = _quote_from_yahoo_v8(t)
+        if q_yh.get("price", 0.0) > 0:
+            candidates.append(q_yh)
+        q_cb = _quote_from_cnbc(t)
+        if q_cb.get("price", 0.0) > 0:
+            candidates.append(q_cb)
+
+    if not candidates:
+        return {}
+
+    # trade_date가 가장 최신인 소스를 최우선 선택 (동일 날짜면 확장장/볼륨 정보가 풍부한 후보 우선)
+    candidates.sort(
+        key=lambda c: (
+            str(c.get("trade_date") or ""),
+            1 if c.get("ext_price", 0.0) > 0 else 0,
+            1 if c.get("volume", 0.0) > 0 else 0,
+        ),
+        reverse=True,
+    )
+    best = dict(candidates[0])
+    # 만약 best에 ext_price나 volume이 비어있고 동일 날짜의 다른 후보에 있다면 보완
+    for c in candidates[1:]:
+        if c.get("trade_date") == best.get("trade_date"):
+            if best.get("volume", 0.0) <= 0 and c.get("volume", 0.0) > 0:
+                best["volume"] = c["volume"]
+            if best.get("ext_price", 0.0) <= 0 and c.get("ext_price", 0.0) > 0:
+                best["ext_price"] = c["ext_price"]
+                best["ext_change"] = c["ext_change"]
+                best["ext_change_pct"] = c["ext_change_pct"]
+                best["ext_label"] = c["ext_label"]
+    return best
+
+
+def _stitch_realtime_quote(df: pd.DataFrame, rt: dict) -> pd.DataFrame:
+    """일봉 히스토리(df)가 전일 종가에서 멈춰 있을 때 실시간 당일 봉을 자동 추가·갱신."""
+    if df is None or df.empty or not rt or safe_float(rt.get("price"), 0.0) <= 0:
+        return df
+    df = df.copy()
+    px = safe_float(rt.get("price"), 0.0)
+    prev_cl = safe_float(rt.get("prev_close"), 0.0)
+    rt_open = safe_float(rt.get("open"), px)
+    rt_high = max(safe_float(rt.get("high"), px), px, rt_open)
+    rt_low_raw = safe_float(rt.get("low"), px)
+    rt_low = min(rt_low_raw if rt_low_raw > 0 else px, px, rt_open)
+    rt_vol = safe_float(rt.get("volume"), 0.0)
+
+    last_idx = pd.Timestamp(df.index[-1]).normalize()
+    last_close = safe_float(df["Close"].iloc[-1], 0.0)
+
+    rt_dt = last_idx
+    if rt.get("trade_date"):
+        try:
+            rt_dt = pd.to_datetime(rt["trade_date"]).normalize()
+        except Exception:
+            rt_dt = last_idx
+
+    # 마지막 봉 종가가 실시간 시세의 전일종가(prev_close)와 일치하고 현재가(px)와 다르면 → 오늘 봉이 누락된 상태!
+    is_missing_today_bar = (
+        rt_dt > last_idx
+        or (
+            prev_cl > 0
+            and abs(last_close - prev_cl) / prev_cl < 0.004
+            and abs(px - last_close) / max(last_close, 1e-6) > 0.0005
+        )
+    )
+
+    if is_missing_today_bar:
+        new_dt = rt_dt if rt_dt > last_idx else (last_idx + pd.Timedelta(days=1))
+        vol_est = rt_vol if rt_vol > 0 else safe_float(df["Volume"].tail(5).mean(), 0.0)
+        new_row = pd.DataFrame(
+            [{"Open": rt_open, "High": rt_high, "Low": rt_low, "Close": px, "Volume": vol_est}],
+            index=[new_dt],
+        )
+        df = pd.concat([df, new_row])
+        df = df[~df.index.duplicated(keep="last")].sort_index()
+    else:
+        # 이미 당일 봉이 존재하면 최신 현재가 및 고가/저가/거래량으로 최신화
+        df.iloc[-1, df.columns.get_loc("Close")] = px
+        df.iloc[-1, df.columns.get_loc("High")] = max(safe_float(df["High"].iloc[-1], px), rt_high)
+        cur_low = safe_float(df["Low"].iloc[-1], px)
+        df.iloc[-1, df.columns.get_loc("Low")] = min(cur_low if cur_low > 0 else px, rt_low)
+        if rt_vol > safe_float(df["Volume"].iloc[-1], 0.0):
+            df.iloc[-1, df.columns.get_loc("Volume")] = rt_vol
+        if prev_cl > 0 and len(df) >= 2:
+            df.iloc[-2, df.columns.get_loc("Close")] = prev_cl
+
+    return df
+
+
+def _fetch_yahoo_v8_direct(ticker: str, period: str = "1y") -> pd.DataFrame:
+    """Yahoo v8 Chart JSON 직접 호출 (뉴욕 타임존 정규화 + meta.regularMarketPrice 당일 봉 누락 방지)."""
+    enc = urllib.parse.quote(ticker.strip().upper())
+    cb = int(time.time() // 30)
+    for host in ("query2.finance.yahoo.com", "query1.finance.yahoo.com"):
+        try:
+            url = f"https://{host}/v8/finance/chart/{enc}?range={period}&interval=1d&includePrePost=false&_={cb}"
             r = requests.get(url, headers=BROWSER_HEADERS, timeout=6)
             if r.status_code != 200:
                 continue
@@ -418,21 +830,62 @@ def _fetch_yahoo_v8_direct(ticker: str, period: str = "1y") -> pd.DataFrame:
             res = (j.get("chart", {}).get("result") or [None])[0]
             if not res:
                 continue
+            meta = res.get("meta") or {}
             ts_list = res.get("timestamp") or []
             q = ((res.get("indicators", {}).get("quote") or [None])[0]) or {}
             if not ts_list or not q.get("close"):
                 continue
+
+            idx_ny = (
+                pd.to_datetime(ts_list, unit="s", utc=True)
+                .tz_convert("America/New_York")
+                .tz_localize(None)
+                .normalize()
+            )
             df = pd.DataFrame({
                 "Open": q.get("open"),
                 "High": q.get("high"),
                 "Low": q.get("low"),
                 "Close": q.get("close"),
                 "Volume": q.get("volume"),
-            }, index=pd.to_datetime(ts_list, unit="s"))
+            }, index=idx_ny)
+
+            # Yahoo 일봉 배열의 마지막 봉이 정산 중이라 Close=None인 경우 meta.regularMarketPrice로 채움
+            reg_px = safe_float(meta.get("regularMarketPrice"), 0.0)
+            reg_ts = meta.get("regularMarketTime")
+            if reg_px > 0 and len(df) >= 1 and pd.isna(df["Close"].iloc[-1]):
+                df.iloc[-1, df.columns.get_loc("Close")] = reg_px
+                df.iloc[-1, df.columns.get_loc("Open")] = safe_float(meta.get("regularMarketOpen"), reg_px)
+                df.iloc[-1, df.columns.get_loc("High")] = safe_float(meta.get("regularMarketDayHigh"), reg_px)
+                df.iloc[-1, df.columns.get_loc("Low")] = safe_float(meta.get("regularMarketDayLow"), reg_px)
+                df.iloc[-1, df.columns.get_loc("Volume")] = safe_float(meta.get("regularMarketVolume"), 0.0)
+
             df = df.dropna(subset=["Close"]).copy()
+            df = df[~df.index.duplicated(keep="last")].sort_index()
             for col in ("Open", "High", "Low"):
                 df[col] = df[col].fillna(df["Close"])
             df["Volume"] = df["Volume"].fillna(0.0)
+
+            # meta.regularMarketTime 날짜가 마지막 봉보다 최신이면 당일 봉 추가
+            if reg_px > 0 and reg_ts and not df.empty:
+                reg_dt = (
+                    pd.to_datetime(int(reg_ts), unit="s", utc=True)
+                    .tz_convert("America/New_York")
+                    .tz_localize(None)
+                    .normalize()
+                )
+                if reg_dt > df.index[-1]:
+                    new_row = pd.DataFrame([{
+                        "Open": safe_float(meta.get("regularMarketOpen"), float(df["Close"].iloc[-1])),
+                        "High": max(safe_float(meta.get("regularMarketDayHigh"), reg_px), reg_px),
+                        "Low": min(safe_float(meta.get("regularMarketDayLow"), reg_px) or reg_px, reg_px),
+                        "Close": reg_px,
+                        "Volume": safe_float(meta.get("regularMarketVolume"), float(df["Volume"].tail(5).mean())),
+                    }], index=[reg_dt])
+                    df = pd.concat([df, new_row])
+                elif reg_dt == df.index[-1]:
+                    df.iloc[-1, df.columns.get_loc("Close")] = reg_px
+
             if len(df) >= 2:
                 return df
         except Exception as e:
@@ -441,12 +894,62 @@ def _fetch_yahoo_v8_direct(ticker: str, period: str = "1y") -> pd.DataFrame:
 
 
 def _fetch_nasdaq_history(ticker: str, period: str = "1y") -> pd.DataFrame:
-    """야후 파이낸스 완전 차단 시 미국 나스닥 공식 API(api.nasdaq.com)로 시세 조회."""
-    if any(c in ticker for c in ("^", "=", "-")):
+    """Nasdaq Charting API (latestIntradayData 당일 봉 포함) + /api/quote/historical 이중 조회."""
+    t = ticker.strip().upper()
+    if any(c in t for c in ("^", "=", "-")):
         return pd.DataFrame()
     days = _period_to_days(period)
-    to_dt = datetime.now()
-    from_dt = to_dt - timedelta(days=days)
+    to_dt = datetime.now() + timedelta(days=1)
+    from_dt = to_dt - timedelta(days=days + 5)
+
+    # 1) Nasdaq Charting API (marketData + latestIntradayData 당일 실시간 봉 동시 제공)
+    try:
+        c_url = (
+            f"https://charting.nasdaq.com/data/charting/historical"
+            f"?symbol={urllib.parse.quote(t)}&date={from_dt.strftime('%Y-%m-%d')}~{to_dt.strftime('%Y-%m-%d')}&"
+        )
+        c_headers = {
+            **BROWSER_HEADERS,
+            "Referer": "https://charting.nasdaq.com/dynamic/chart.html",
+        }
+        rc = requests.get(c_url, headers=c_headers, timeout=6)
+        if rc.status_code == 200:
+            cj = rc.json() or {}
+            mdata = cj.get("marketData") or []
+            latest_intra = cj.get("latestIntradayData") or {}
+            rows_c = []
+            for item in mdata:
+                cl = safe_float(item.get("Close"), 0.0)
+                if cl <= 0:
+                    continue
+                dt = pd.to_datetime(str(item.get("Date"))[:10]).normalize()
+                rows_c.append({
+                    "Date": dt,
+                    "Open": safe_float(item.get("Open"), cl),
+                    "High": safe_float(item.get("High"), cl),
+                    "Low": safe_float(item.get("Low"), cl),
+                    "Close": cl,
+                    "Volume": safe_float(item.get("Volume"), 0.0),
+                })
+            if latest_intra and safe_float(latest_intra.get("Close"), 0.0) > 0:
+                icl = safe_float(latest_intra.get("Close"), 0.0)
+                idt = pd.to_datetime(str(latest_intra.get("Date"))[:10]).normalize()
+                rows_c.append({
+                    "Date": idt,
+                    "Open": safe_float(latest_intra.get("Open"), icl),
+                    "High": safe_float(latest_intra.get("High"), icl),
+                    "Low": safe_float(latest_intra.get("Low"), icl),
+                    "Close": icl,
+                    "Volume": safe_float(latest_intra.get("Volume"), 0.0),
+                })
+            if len(rows_c) >= 5:
+                dfc = pd.DataFrame(rows_c).set_index("Date").sort_index()
+                dfc = dfc[~dfc.index.duplicated(keep="last")]
+                return dfc
+    except Exception as e:
+        LOG.warning("Nasdaq charting historical failed for %s: %s", t, e)
+
+    # 2) Nasdaq /api/quote/{ticker}/historical
     headers = {
         **BROWSER_HEADERS,
         "Origin": "https://www.nasdaq.com",
@@ -455,7 +958,7 @@ def _fetch_nasdaq_history(ticker: str, period: str = "1y") -> pd.DataFrame:
     for asset in ("stocks", "etf"):
         try:
             url = (
-                f"https://api.nasdaq.com/api/quote/{urllib.parse.quote(ticker.upper())}/historical"
+                f"https://api.nasdaq.com/api/quote/{urllib.parse.quote(t)}/historical"
                 f"?assetclass={asset}&fromdate={from_dt.strftime('%Y-%m-%d')}"
                 f"&limit={max(60, days)}&todate={to_dt.strftime('%Y-%m-%d')}"
             )
@@ -468,26 +971,28 @@ def _fetch_nasdaq_history(ticker: str, period: str = "1y") -> pd.DataFrame:
             parsed = []
             for row in rows:
                 try:
-                    dt = pd.to_datetime(row.get("date"))
-                    cl = float(str(row.get("close", "")).replace("$", "").replace(",", "").strip())
-                    op = float(str(row.get("open", cl)).replace("$", "").replace(",", "").strip() or cl)
-                    hi = float(str(row.get("high", cl)).replace("$", "").replace(",", "").strip() or cl)
-                    lo = float(str(row.get("low", cl)).replace("$", "").replace(",", "").strip() or cl)
-                    vl_s = str(row.get("volume", "0")).replace(",", "").strip()
-                    vl = float(vl_s) if vl_s and vl_s != "N/A" else 0.0
+                    dt = pd.to_datetime(row.get("date")).normalize()
+                    cl = safe_float(row.get("close"), 0.0)
+                    if cl <= 0:
+                        continue
+                    op = safe_float(row.get("open"), cl)
+                    hi = safe_float(row.get("high"), cl)
+                    lo = safe_float(row.get("low"), cl)
+                    vl = safe_float(row.get("volume"), 0.0)
                     parsed.append({"Date": dt, "Open": op, "High": hi, "Low": lo, "Close": cl, "Volume": vl})
                 except Exception:
                     continue
             if len(parsed) >= 5:
                 df = pd.DataFrame(parsed).set_index("Date").sort_index()
+                df = df[~df.index.duplicated(keep="last")]
                 return df
         except Exception as e:
-            LOG.warning("Nasdaq fallback (%s) failed for %s: %s", asset, ticker, e)
+            LOG.warning("Nasdaq fallback (%s) failed for %s: %s", asset, t, e)
     return pd.DataFrame()
 
 
 def _fetch_stooq_history(ticker: str, period: str = "1y") -> pd.DataFrame:
-    """야후 파이낸스 차단 시 Stooq 글로벌 무료 CSV 엔드포인트 폴백."""
+    """Stooq 글로벌 무료 CSV 엔드포인트 폴백."""
     stooq_map = {
         "^TNX": "10usy.b", "ES=F": "spy.us", "NQ=F": "qqq.us",
         "YM=F": "dia.us", "CL=F": "uso.us", "^VIX": "vixy.us", "GC=F": "gld.us",
@@ -499,15 +1004,15 @@ def _fetch_stooq_history(ticker: str, period: str = "1y") -> pd.DataFrame:
             return pd.DataFrame()
         sym = f"{ticker.lower()}.us"
     days = _period_to_days(period)
-    d2 = datetime.now().strftime("%Y%m%d")
-    d1 = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+    d2 = (datetime.now() + timedelta(days=1)).strftime("%Y%m%d")
+    d1 = (datetime.now() - timedelta(days=days + 5)).strftime("%Y%m%d")
     url = f"https://stooq.com/q/d/l/?s={sym}&d1={d1}&d2={d2}&i=d"
     try:
         r = requests.get(url, headers=BROWSER_HEADERS, timeout=7)
         if r.status_code == 200 and "Date,Open,High,Low,Close" in r.text:
             df = pd.read_csv(io.StringIO(r.text))
             if not df.empty and "Close" in df.columns:
-                df["Date"] = pd.to_datetime(df["Date"])
+                df["Date"] = pd.to_datetime(df["Date"]).dt.normalize()
                 df = df.set_index("Date").sort_index()
                 if "Volume" not in df.columns:
                     df["Volume"] = 0.0
@@ -523,26 +1028,20 @@ def _fetch_stooq_history(ticker: str, period: str = "1y") -> pd.DataFrame:
 @st.cache_data(ttl=CFG["cache"]["top_bar"])
 def get_top_bar_data():
     p, ch, k = 0.0, 0.0, 0.0
-    # 1) BTC-USD: Yahoo v8 -> yfinance -> Binance -> Coinbase
+    # 1) BTC-USD: Binance 실시간 -> Yahoo 실시간 Quote -> Coinbase
     try:
-        d = _fetch_yahoo_v8_direct("BTC-USD", "5d")
-        if d.empty:
-            d = yf.Ticker("BTC-USD").history(period="5d")
-        if len(d) >= 2:
-            p = safe_float(d['Close'].iloc[-1], 0.0)
-            pr = safe_float(d['Close'].iloc[-2], p)
-            ch = p - pr
+        rb = requests.get("https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT", timeout=4)
+        if rb.status_code == 200:
+            jb = rb.json()
+            p = safe_float(jb.get("lastPrice"), 0.0)
+            ch = safe_float(jb.get("priceChange"), 0.0)
     except Exception:
         pass
     if p <= 0:
-        try:
-            rb = requests.get("https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT", timeout=4)
-            if rb.status_code == 200:
-                jb = rb.json()
-                p = safe_float(jb.get("lastPrice"), 0.0)
-                ch = safe_float(jb.get("priceChange"), 0.0)
-        except Exception:
-            pass
+        qb = get_realtime_quote("BTC-USD")
+        if qb.get("price", 0.0) > 0:
+            p = qb["price"]
+            ch = qb.get("change", 0.0)
     if p <= 0:
         try:
             rc = requests.get("https://api.coinbase.com/v2/prices/BTC-USD/spot", timeout=4)
@@ -551,15 +1050,10 @@ def get_top_bar_data():
         except Exception:
             pass
 
-    # 2) USD/KRW: Yahoo v8 -> yfinance -> Open ER-API
-    try:
-        dk = _fetch_yahoo_v8_direct("KRW=X", "5d")
-        if dk.empty:
-            dk = yf.Ticker("KRW=X").history(period="5d")
-        if not dk.empty:
-            k = safe_float(dk['Close'].iloc[-1], 0.0)
-    except Exception:
-        pass
+    # 2) USD/KRW: Yahoo 실시간 Quote -> CNBC -> Open ER-API
+    qk = get_realtime_quote("KRW=X")
+    if qk.get("price", 0.0) > 0:
+        k = qk["price"]
     if k <= 0:
         try:
             rk = requests.get("https://open.er-api.com/v6/latest/USD", timeout=4)
@@ -572,67 +1066,50 @@ def get_top_bar_data():
 
 @st.cache_data(ttl=CFG["cache"]["indices"])
 def get_market_indices():
-    tickers = {
-        "10년물 국채": ("^TNX", "IEF"),
-        "S&P500 야간선물": ("ES=F", "SPY"),
-        "나스닥100 야간선물": ("NQ=F", "QQQ"),
-        "다우 야간선물": ("YM=F", "DIA"),
-        "WTI 원유": ("CL=F", "USO"),
-        "VIX 변동성": ("^VIX", "VIXY"),
-        "금 (Gold)": ("GC=F", "GLD"),
-    }
+    tickers = [
+        ("10년물 국채", "^TNX"),
+        ("S&P500 야간선물", "ES=F"),
+        ("나스닥100 야간선물", "NQ=F"),
+        ("다우 야간선물", "YM=F"),
+        ("WTI 원유", "CL=F"),
+        ("VIX 변동성", "^VIX"),
+        ("금 (Gold)", "GC=F"),
+    ]
     out = []
-    for name, (t, proxy_etf) in tickers.items():
-        cur, prev = 0.0, 0.0
-        # 1차: Yahoo v8 Direct (Crumb 불필요)
-        try:
-            d = _fetch_yahoo_v8_direct(t, "5d")
-            if len(d) >= 2:
-                cur = safe_float(d['Close'].iloc[-1], 0.0)
-                prev = safe_float(d['Close'].iloc[-2], 0.0)
-        except Exception:
-            pass
-
-        # 2차: yfinance fast_info / history
-        if cur <= 0 or prev <= 0:
+    for name, t in tickers:
+        cur, chg = 0.0, 0.0
+        # 1차: 실시간 Quote 엔진 (Yahoo 1d/5m meta.regularMarketPrice + CNBC 실시간 폴백)
+        q = get_realtime_quote(t)
+        if q.get("price", 0.0) > 0:
+            cur = safe_float(q.get("price"), 0.0)
+            chg = safe_float(q.get("change_pct"), 0.0)
+        # 2차: Yahoo v8 5d 일봉 폴백
+        if cur <= 0:
             try:
-                tk = yf.Ticker(t)
-                fi = tk.fast_info
-                c_fi = getattr(fi, 'last_price', None)
-                p_fi = getattr(fi, 'previous_close', None)
-                if c_fi and p_fi and float(c_fi) > 0 and float(p_fi) > 0:
-                    cur, prev = float(c_fi), float(p_fi)
-                else:
-                    d2 = tk.history(period="5d")
-                    if len(d2) >= 2:
-                        cur = safe_float(d2['Close'].iloc[-1], 0.0)
-                        prev = safe_float(d2['Close'].iloc[-2], 0.0)
+                d = _fetch_yahoo_v8_direct(t, "5d")
+                if len(d) >= 2:
+                    cur = safe_float(d["Close"].iloc[-1], 0.0)
+                    prev = safe_float(d["Close"].iloc[-2], cur)
+                    chg = ((cur - prev) / prev) * 100.0 if prev > 0 else 0.0
             except Exception:
                 pass
-
-        # 3차: Nasdaq / Stooq 프록시 폴백 (야후 전면 차단 시)
-        if cur <= 0 or prev <= 0:
-            try:
-                d3 = _fetch_nasdaq_history(proxy_etf, "1mo")
-                if d3.empty:
-                    d3 = _fetch_stooq_history(t, "1mo")
-                if len(d3) >= 2:
-                    cur = safe_float(d3['Close'].iloc[-1], 0.0)
-                    prev = safe_float(d3['Close'].iloc[-2], 0.0)
-            except Exception:
-                pass
-
-        chg = ((cur - prev) / prev) * 100.0 if prev > 0 else 0.0
         out.append({"name": name, "price": cur, "change": chg})
     return out
 
 
 def _clean_tz(df: pd.DataFrame) -> pd.DataFrame:
-    if df is not None and not df.empty and getattr(df.index, "tz", None) is not None:
-        try:
-            df.index = df.index.tz_localize(None)
-        except Exception:
-            df.index = df.index.tz_convert(None)
+    if df is not None and not df.empty:
+        if getattr(df.index, "tz", None) is not None:
+            try:
+                df.index = df.index.tz_convert("America/New_York").tz_localize(None).normalize()
+            except Exception:
+                df.index = df.index.tz_localize(None)
+        else:
+            try:
+                df.index = pd.to_datetime(df.index).normalize()
+            except Exception:
+                pass
+        df = df[~df.index.duplicated(keep="last")].sort_index()
     return df
 
 
@@ -642,42 +1119,59 @@ def get_history(ticker: str, period: str = "1y") -> pd.DataFrame:
     if not t:
         return pd.DataFrame()
 
-    # 1차: Yahoo v8 Direct JSON (가장 빠르고 yfinance crumb 차단 영향을 덜 받음)
+    df = pd.DataFrame()
+
+    # 1차: Yahoo v8 Direct JSON
     h_v8 = _fetch_yahoo_v8_direct(t, period)
     if not h_v8.empty and len(h_v8) >= 5:
-        return _clean_tz(h_v8)
+        df = _clean_tz(h_v8)
 
-    # 2차: yfinance 라이브러리
-    try:
-        h = yf.Ticker(t).history(period=period)
-        if h is not None and not h.empty and 'Close' in h.columns and h['Close'].notna().sum() >= 5:
-            return _clean_tz(h)
-    except Exception as e:
-        LOG.warning("yfinance history failed for %s: %s", t, e)
+    # 2차: Nasdaq 공식 Charting / Historical API
+    if df.empty:
+        h_nq = _fetch_nasdaq_history(t, period)
+        if not h_nq.empty and len(h_nq) >= 5:
+            LOG.info("Fetched %s from Nasdaq API fallback", t)
+            df = _clean_tz(h_nq)
 
-    # 3차: Nasdaq 공식 API (야후 파이낸스 IP 차단 시 100% 독립 작동)
-    h_nq = _fetch_nasdaq_history(t, period)
-    if not h_nq.empty and len(h_nq) >= 5:
-        LOG.info("Fetched %s from Nasdaq API fallback", t)
-        return _clean_tz(h_nq)
+    # 3차: yfinance 라이브러리
+    if df.empty:
+        try:
+            h = yf.Ticker(t).history(period=period)
+            if h is not None and not h.empty and "Close" in h.columns and h["Close"].notna().sum() >= 5:
+                df = _clean_tz(h)
+        except Exception as e:
+            LOG.warning("yfinance history failed for %s: %s", t, e)
 
-    # 4차: Stooq 무료 CSV API (야후 파이낸스 무관)
-    h_sq = _fetch_stooq_history(t, period)
-    if not h_sq.empty and len(h_sq) >= 5:
-        LOG.info("Fetched %s from Stooq CSV fallback", t)
-        return _clean_tz(h_sq)
+    # 4차: Stooq 무료 CSV API
+    if df.empty:
+        h_sq = _fetch_stooq_history(t, period)
+        if not h_sq.empty and len(h_sq) >= 5:
+            LOG.info("Fetched %s from Stooq CSV fallback", t)
+            df = _clean_tz(h_sq)
 
     # 5차: xfinance 라이브러리 (설치 시)
-    if HAS_XFINANCE:
+    if df.empty and HAS_XFINANCE:
         try:
             xh = xf.Ticker(t).history(period=period)
             if xh is not None and not xh.empty:
-                return _clean_tz(xh)
+                df = _clean_tz(xh)
         except Exception as e:
             LOG.error("xfinance fallback failed for %s: %s", t, e)
 
-    LOG.error("All 5 history sources failed for %s", t)
-    return pd.DataFrame()
+    if df.empty:
+        LOG.error("All 5 history sources failed for %s", t)
+        return pd.DataFrame()
+
+    # ⭐ 핵심: 어떤 히스토리 소스를 사용했든 실시간 최신 시세(get_realtime_quote)를 조회해
+    # 전일 종가에서 멈춰 있는 경우 오늘 봉을 즉시 병합(Stitching)하여 100% 현재 데이터를 보장!
+    try:
+        rt = get_realtime_quote(t)
+        if rt and safe_float(rt.get("price"), 0.0) > 0:
+            df = _stitch_realtime_quote(df, rt)
+    except Exception as e:
+        LOG.warning("Realtime stitch skipped for %s: %s", t, e)
+
+    return df
 
 
 @st.cache_data(ttl=CFG["cache"]["market_cap"])
@@ -692,7 +1186,18 @@ def get_market_cap(ticker: str):
                 return mc_fh * 1e6
         except Exception:
             pass
-    # 2차: yfinance fast_info (.info 호출은 429 유발하므로 지양)
+    # 2차: Nasdaq summary API 시가총액 (야후 차단 무관)
+    try:
+        url = f"https://api.nasdaq.com/api/quote/{urllib.parse.quote(ticker.upper())}/summary?assetclass=stocks"
+        r = requests.get(url, headers={**BROWSER_HEADERS, "Referer": "https://www.nasdaq.com/"}, timeout=5)
+        if r.status_code == 200:
+            sd = ((r.json().get("data") or {}).get("summaryData") or {})
+            mc_val = safe_float((sd.get("MarketCap") or {}).get("value"), 0.0)
+            if mc_val > 0:
+                return mc_val
+    except Exception:
+        pass
+    # 3차: yfinance fast_info
     try:
         t = yf.Ticker(ticker)
         fi = t.fast_info
@@ -704,17 +1209,6 @@ def get_market_cap(ticker: str):
                 mc = None
         if mc and float(mc) > 0:
             return float(mc)
-    except Exception:
-        pass
-    # 3차: Nasdaq API 시가총액 폴백
-    try:
-        url = f"https://api.nasdaq.com/api/quote/{urllib.parse.quote(ticker.upper())}/info?assetclass=stocks"
-        r = requests.get(url, headers={**BROWSER_HEADERS, "Referer": "https://www.nasdaq.com/"}, timeout=5)
-        if r.status_code == 200:
-            ks = ((r.json().get("data") or {}).get("keyStats") or {})
-            mc_str = str((ks.get("MarketCap") or {}).get("value", "")).replace(",", "").replace("$", "").strip()
-            if mc_str.isdigit():
-                return float(mc_str)
     except Exception:
         pass
     return None
@@ -736,8 +1230,8 @@ def get_fear_and_greed_index():
             raise ValueError("Fallback to VIX")
     except Exception:
         try:
-            vd = _fetch_yahoo_v8_direct("^VIX", "5d")
-            vix = safe_float(vd['Close'].iloc[-1], 18.0) if not vd.empty else 18.0
+            vq = get_realtime_quote("^VIX")
+            vix = safe_float(vq.get("price"), 18.0) if vq else 18.0
             if vix >= 30:
                 score, rating = 18.0, "Extreme Fear"
             elif vix >= 22:
@@ -1471,6 +1965,10 @@ def scan_watchlist(ticker_string):
             if data is not None and not data.empty:
                 try:
                     df = data[t].dropna() if len(tickers) > 1 else data.dropna()
+                    df = _clean_tz(df)
+                    rt_t = get_realtime_quote(t)
+                    if rt_t and safe_float(rt_t.get("price"), 0.0) > 0:
+                        df = _stitch_realtime_quote(df, rt_t)
                 except Exception:
                     df = pd.DataFrame()
             if df.empty or len(df) < 20:
@@ -1745,12 +2243,12 @@ def build_full_risk_report(holdings, benchmark="SPY"):
 
 
 # ==============================================================================
-# 14) TAB 1: 개별 종목 분석 (⭐ Patch C: 악재 나이 기반 회복 판정 + 캐시 변이 방지)
+# 14) TAB 1: 개별 종목 분석 (⭐ 실시간 시세 동기화 + Patch C 적용)
 # ==============================================================================
 def render_tab_analysis(indices, usd_krw):
     if "selected_ticker" not in st.session_state:
         st.session_state.selected_ticker = "IREN"
-    c_inp, c1, c2, c3, c4, c5, c6 = st.columns([2.5, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8])
+    c_inp, c1, c2, c3, c4, c5, c6, c_ref = st.columns([2.2, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.65])
     with c_inp:
         ticker_input = st.text_input("종목 코드 입력", value=st.session_state.selected_ticker,
                                      label_visibility="collapsed", placeholder="예: TSLA")
@@ -1761,6 +2259,10 @@ def render_tab_analysis(indices, usd_krw):
             if st.button(q, key=f"chip_{q}", use_container_width=True):
                 st.session_state.selected_ticker = q
                 st.rerun()
+    with c_ref:
+        if st.button("🔄", key="top_refresh_btn", help="실시간 시세 강제 새로고침", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
     if not ticker:
         return
     safe_ticker = html.escape(ticker)
@@ -1771,14 +2273,31 @@ def render_tab_analysis(indices, usd_krw):
             st.cache_data.clear()
             st.rerun()
         return
+
     hist = hist.copy()
+    rt_quote = get_realtime_quote(ticker)
+    if rt_quote and safe_float(rt_quote.get("price"), 0.0) > 0:
+        hist = _stitch_realtime_quote(hist, rt_quote)
+
     current_price = safe_float(hist['Close'].iloc[-1], 0.0)
     prev_close = safe_float(hist['Close'].iloc[-2], current_price)
+    if rt_quote and safe_float(rt_quote.get("price"), 0.0) > 0:
+        current_price = safe_float(rt_quote["price"], current_price)
+        if safe_float(rt_quote.get("prev_close"), 0.0) > 0:
+            prev_close = safe_float(rt_quote["prev_close"], prev_close)
+
     if current_price <= 0:
         st.warning(f"'{safe_ticker}' 데이터 비정상")
         return
     change = current_price - prev_close
     change_pct = (change / prev_close) * 100 if prev_close > 0 else 0.0
+    last_bar_date = pd.Timestamp(hist.index[-1]).strftime("%Y-%m-%d")
+    quote_src = rt_quote.get("source", "Live Sync") if rt_quote else "Daily Sync"
+    ext_px = safe_float(rt_quote.get("ext_price"), 0.0) if rt_quote else 0.0
+    ext_chg = safe_float(rt_quote.get("ext_change"), 0.0) if rt_quote else 0.0
+    ext_chg_pct = safe_float(rt_quote.get("ext_change_pct"), 0.0) if rt_quote else 0.0
+    ext_lbl = str(rt_quote.get("ext_label") or "") if rt_quote else ""
+
     hist['EMA10'] = hist['Close'].ewm(span=10, adjust=False).mean()
     hist['EMA20'] = hist['Close'].ewm(span=20, adjust=False).mean()
     hist['EMA50'] = hist['Close'].ewm(span=50, adjust=False).mean()
@@ -1840,7 +2359,6 @@ def render_tab_analysis(indices, usd_krw):
         newest_bad_h = safe_float(cat.get("bad_newest_hours", 9999.0), 9999.0)
         min_age_h = CFG["news"]["recovery_min_age_hours"]
         if (cat.get("bad_news_hits", 0) >= 1 or cat.get("bad_news_total", 0) >= 1) and newest_bad_h >= min_age_h:
-            # 악재 발생 시점에 맞춰 비교 기준일(2~6영업일 전) 동적 산정 (이미 로드된 hist 재사용)
             lookback_bars = max(2, min(6, int(round(newest_bad_h / 24.0)) + 1))
             if len(hist) > lookback_bars:
                 ref_px = float(hist['Close'].iloc[-(lookback_bars + 1)])
@@ -1963,7 +2481,6 @@ def render_tab_analysis(indices, usd_krw):
     grand = int(np.clip(master_score + cat['macro_score'] + cat['catalyst_score'] + recovery_bonus + squeeze_eval['bonus'], 0, 100))
     has_macro_crisis = cat['macro_score'] <= -15
     has_bad = cat['bad_news_hits'] >= 2 and recovery_bonus == 0
-    has_good = cat['contract_hits'] >= 1 or cat['earnings_bull_hits'] >= 1
 
     if has_bad and current_price < ema20:
         fv_title, fv_color = "🚨 [최종 결론] 개별 악재 + 추세 이탈 — 진입 금지", "#f43f5e"
@@ -1994,6 +2511,12 @@ def render_tab_analysis(indices, usd_krw):
     ts_from_high_core = box_high * (1 - ts_core_pct / 100)
 
     rec_badge = f'<span class="badge badge-teal">💡 악재 소화 +{recovery_bonus}</span>' if recovery_bonus else ""
+    ext_html = ""
+    if ext_px > 0 and ext_lbl:
+        ext_col = "#10b981" if ext_chg >= 0 else "#f43f5e"
+        ext_sign = "+" if ext_chg >= 0 else ""
+        ext_html = f'<div style="font-size:12px; font-family:\'JetBrains Mono\'; color:#cbd5e1; margin-bottom:4px;">🌙 <b>{html.escape(ext_lbl)}:</b> <span style="color:{ext_col}; font-weight:800;">${ext_px:,.2f} ({ext_sign}${ext_chg:,.2f} / {ext_chg_pct:+.2f}%)</span></div>'
+
     render_html(f"""
     <div class="main-hero-card">
         <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:6px;">
@@ -2002,13 +2525,15 @@ def render_tab_analysis(indices, usd_krw):
             <span class="badge {meta_badge}">{meta_action.split('(')[0].strip()}</span>
             <span class="badge badge-purple">종합 {grand}점</span>
             <span class="badge {squeeze_eval['badge']}">스퀴즈 {squeeze_eval['sq_score']}점</span>
+            <span class="badge badge-indigo">🕒 {html.escape(last_bar_date)} · {html.escape(quote_src)}</span>
             {rec_badge}
         </div>
         <div style="font-size:30px; font-weight:800; font-family:'JetBrains Mono'; margin:6px 0;" class="{color}">
             ${current_price:,.2f} <span style="font-size:16px;">{arrow} ${abs(change):,.2f} ({change_pct:+.2f}%)</span>
         </div>
+        {ext_html}
         <div style="color:#94a3b8; font-size:12px;">
-            {cap_profile['cap_desc']} | ATR: <b class="text-white">${atr:.2f} ({atr_pct:.1f}%)</b> | 거래량: <b class="text-white">{vol_ratio:.1f}x</b> | Wilder RSI: <b class="text-white">{rsi:.1f}</b>
+            {cap_profile['cap_desc']} | 전일종가: <b class="text-white">${prev_close:,.2f}</b> | ATR: <b class="text-white">${atr:.2f} ({atr_pct:.1f}%)</b> | 거래량: <b class="text-white">{vol_ratio:.1f}x</b> | Wilder RSI: <b class="text-white">{rsi:.1f}</b>
         </div>
     </div>""")
 
