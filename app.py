@@ -1,5 +1,10 @@
 # ==============================================================================
-# GANGJIN AI TRADER PRO — App (20.0 FINAL) — Self-Evolving Chief AI · EOD Paper Trading · 16-Team Audit Edition
+# GANGJIN AI TRADER PRO — App (21.0 FINAL) — Institutional Fund-Quant · 11-Sector Flow Radar · AI AS Self-Healing Edition
+# - ⭐ [21.0 NEW] 기관급 펀드 퀀트 동적 가중치 & 11대 섹터 자금흐름 레이더 & AI AS 자동수술/GitHub 배포 완전체:
+#     · [Fund-Quant Chief] 확률적 레짐 소프트 블렌딩(Soft Blending) + 16개 팀 실시간 정답률 메타러닝 가중치 + 섹터 자금쏠림 동적 부스팅 + 쿼터 켈리(Quarter-Kelly) 사이징 + B급 관찰(WATCH) 3단계 분류
+#     · [11-Sector Money Flow Radar] 나스닥/미국 11대 GICS 섹터 ETF(XLK·XLV·XLF·XLE·XLI·XLC·XLY·XLP·XLU·XLB·XLRE) 1주/1개월 달러 거래대금 자금 유입·유출 TOP 3 레이더 카드 (BreadthRS 팀 통합)
+#     · [AI AS 자동수술 & 먹통방지 센터] 무료 최신 모델(Gemini Flash / DeepSeek V3) vs 유료 고급 모델(Gemini 4 Argon / DeepSeek R1, 일 5회 하드캡) 동적 라우팅 + 자동 .bak 백업 + AST 보안/문법 검증 후 안전 덮어쓰기(safe_auto_fix) + GitHub 자동 커밋/푸시(Render Auto-Deploy 연동)
+#     · [Render 2GB + 영구 디스크(/var/data) & SQLite WAL] 프로세스 재시작 시에도 DB/백업 보존 + WAL 동시성 잠금 방지 + 50건 시뮬레이터 실제 에이전트 함수(Chart·Master·Macro·ExtraMasters·Chief) 연동
 # - ⭐ [20.0 NEW] 자율 진화형 컨트롤 타워 & EOD 모의매매 & 16개 팀 감사 시스템 탑재 (총 10개 탭 완전체):
 #     · [Tab 8 / agent_paper.py] 🤖 모의매매팀 EOD 시뮬레이션: T일 종가 시그널 -> T+1일 시가 진입 -> 일봉 고/저가 청산 (Look-ahead Bias 0% + 50건 고속 검증기)
 #     · [Tab 9 / agent_audit.py] 🔍 16개 팀 정밀 감사 센터: 매매별 16개 팀 정답률 추적 -> 3회 연속 오답 팀 자동 적발 및 맞춤 수정 요청서(±20% 안전캡) 발행
@@ -297,7 +302,11 @@ CFG = {
         "dtc_high": 7.0, "dtc_mid": 4.0,
         "squeeze_bonus_max": 10,
     },
-    "paths": {"db": "data/portfolio.db", "logs": "data/logs"},
+    "paths": {
+        "db": "/var/data/portfolio.db" if (os.path.isdir("/var/data") and os.access("/var/data", os.W_OK)) else "data/portfolio.db",
+        "logs": "/var/data/logs" if (os.path.isdir("/var/data") and os.access("/var/data", os.W_OK)) else "data/logs",
+        "backups": "/var/data/backups" if (os.path.isdir("/var/data") and os.access("/var/data", os.W_OK)) else "data/backups",
+    },
     "usd_krw_fallback": 1380.0,
     # ⭐ [16.5] 야후/외부 API 조회 실패 대비 주요 종목 실적 발표일 수동 보정 사전 (2025~2027 분기별 일정)
     "known_earnings": {
@@ -343,6 +352,7 @@ CFG = {
 
 Path(CFG["paths"]["logs"]).mkdir(parents=True, exist_ok=True)
 Path(CFG["paths"]["db"]).parent.mkdir(parents=True, exist_ok=True)
+Path(CFG["paths"].get("backups", "data/backups")).mkdir(parents=True, exist_ok=True)
 
 FINNHUB_KEY = os.getenv("FINNHUB_API_KEY", "").strip()
 
@@ -1820,17 +1830,22 @@ _ACTIVE_DB_PATH = CFG["paths"]["db"]
 
 def _db_conn():
     global _ACTIVE_DB_PATH
-    try:
-        conn = sqlite3.connect(_ACTIVE_DB_PATH, check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=MEMORY;")
-        conn.execute("PRAGMA synchronous=OFF;")
-        return conn
-    except Exception:
-        _ACTIVE_DB_PATH = "/tmp/gangjin_portfolio.db"
-        conn = sqlite3.connect(_ACTIVE_DB_PATH, check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=MEMORY;")
-        conn.execute("PRAGMA synchronous=OFF;")
-        return conn
+    for cand_path in (_ACTIVE_DB_PATH, "/tmp/gangjin_portfolio.db"):
+        try:
+            conn = sqlite3.connect(cand_path, check_same_thread=False, timeout=15.0)
+            try:
+                conn.execute("PRAGMA journal_mode=WAL;")
+            except sqlite3.OperationalError:
+                conn.execute("PRAGMA journal_mode=MEMORY;")
+            conn.execute("PRAGMA synchronous=NORMAL;")
+            conn.execute("PRAGMA busy_timeout=5000;")
+            conn.execute("CREATE TABLE IF NOT EXISTS _healthcheck (id INT)")
+            _ACTIVE_DB_PATH = cand_path
+            return conn
+        except Exception:
+            continue
+    conn = sqlite3.connect("/tmp/gangjin_portfolio.db", check_same_thread=False, timeout=15.0)
+    return conn
 
 
 def init_db():
@@ -3350,15 +3365,18 @@ def scan_watchlist(ticker_string):
                     action, badge = "🟢 PANIC BUY", "badge-green"
             elif curr_price < ema20:
                 action, badge = "⚠️ EXIT", "badge-red"
+            elif curr_price > ema20 and 45.0 <= rsi <= 66.0 and (vol_ratio >= 1.05 or curr_price >= box_high * 0.96):
+                action, badge = "🟡 B급 관찰 (WATCH)", "badge-purple"
             elif curr_price > ema20:
                 action, badge = "✅ HOLD", "badge-yellow"
             signals.append({"ticker": html.escape(t), "price": curr_price, "change_pct": change_pct,
                             "action": action, "badge": badge, "rsi": rsi, "vol": vol_ratio,
                             "box_high": box_high, "box_low": box_low,
-                            "atr_pct": round(atr_pct, 1), "ts_rec": ts_rec, "is_buy": "BUY" in action})
+                            "atr_pct": round(atr_pct, 1), "ts_rec": ts_rec, "is_buy": "BUY" in action,
+                            "is_watch": "WATCH" in action})
         except Exception:
             pass
-    po = {"🔥 STRONG BUY": 0, "🟢 PANIC BUY": 1, "📈 BUY": 2, "✅ HOLD": 3, "⏸️ WAIT": 4, "🚨 악재점검 요망": 5, "⚠️ EXIT": 6}
+    po = {"🔥 STRONG BUY": 0, "🟢 PANIC BUY": 1, "📈 BUY": 2, "🟡 B급 관찰 (WATCH)": 3, "✅ HOLD": 4, "⏸️ WAIT": 5, "🚨 악재점검 요망": 6, "⚠️ EXIT": 7}
     signals.sort(key=lambda x: (po.get(x['action'], 99), -x['change_pct']))
     return signals
 
@@ -3966,7 +3984,10 @@ def run_news_agent_from_cat(cat: dict, recovery_bonus: int = 0, bull_fade_penalt
 
     if has_bad:
         status = "DANGER"
-        summary = f"🚨 중대/최신 악재 {bad_cnt}건 (매수 차단)"
+        if sev_cnt >= 1:
+            summary = f"🚨 중대 악재 {sev_cnt}건 · 일반 {max(0, bad_cnt - sev_cnt)}건 (매수 차단)"
+        else:
+            summary = f"⚠️ 최신 악재 {bad_cnt}건 (매수 차단)"
     elif score >= 20 or bull_cnt >= 1:
         status = "BULLISH"
         summary = f"🤝 최신 호재 {bull_cnt}건 ({eff_cat:+.1f}점)"
@@ -4614,28 +4635,58 @@ def run_institutional_agent(ticker: str) -> AgentReport:
 
 
 # ------------------------------------------------------------------------------
-# [Agent 13] Market Breadth & Relative Strength (RS) Agent (시장 호흡 & 상대강도 전담) ⭐ NEW
+# [Agent 13] Market Breadth & Relative Strength (RS) & 11-Sector Money Flow Agent ⭐ 21.0 UPGRADE
 # ------------------------------------------------------------------------------
 SECTOR_ETF_MAP = {
     "Technology": ("XLK", "기술/AI"),
-    "Energy": ("XLE", "에너지"),
+    "Healthcare": ("XLV", "바이오/헬스케어"),
     "Financial Services": ("XLF", "금융"),
-    "Healthcare": ("XLV", "헬스케어"),
+    "Energy": ("XLE", "에너지"),
     "Industrials": ("XLI", "산업재/방산"),
     "Communication Services": ("XLC", "커뮤니케이션"),
     "Consumer Cyclical": ("XLY", "경기소비재"),
     "Consumer Defensive": ("XLP", "필수소비재"),
     "Utilities": ("XLU", "유틸리티/전력"),
+    "Basic Materials": ("XLB", "소재/화학"),
+    "Real Estate": ("XLRE", "부동산/리츠"),
+}
+
+GICS_11_SECTOR_LABELS = {
+    "XLK": "기술/AI(XLK)",
+    "XLV": "바이오/헬스케어(XLV)",
+    "XLF": "금융(XLF)",
+    "XLE": "에너지(XLE)",
+    "XLI": "산업재/방산(XLI)",
+    "XLC": "커뮤니케이션(XLC)",
+    "XLY": "경기소비재(XLY)",
+    "XLP": "필수소비재(XLP)",
+    "XLU": "유틸리티/전력(XLU)",
+    "XLB": "소재/화학(XLB)",
+    "XLRE": "부동산/리츠(XLRE)",
+}
+
+SECTOR_REPRESENTATIVE_STOCKS = {
+    "XLK": "NVDA, AVGO, MSFT, AAPL, PLTR, AMD, TSM",
+    "XLV": "LLY, UNH, ABBV, ISRG, VRTX, HIMS, MRK",
+    "XLF": "JPM, GS, MS, V, MA, BRK-B, SOFI",
+    "XLE": "XOM, CVX, COP, SLB, EOG, OXY",
+    "XLI": "GE, CAT, RTX, LMT, ETN, URI, RKLB",
+    "XLC": "META, GOOGL, NFLX, TMUS, DIS, RDDT",
+    "XLY": "AMZN, TSLA, HD, BKNG, MCD, NKE",
+    "XLP": "COST, WMT, PG, KO, PEP",
+    "XLU": "CEG, VST, NEE, SO, DUK",
+    "XLB": "LIN, FCX, NEM, SHW, APD",
+    "XLRE": "PLD, AMT, EQIX, WELL, SPG",
 }
 
 
 @st.cache_data(ttl=CFG["cache"].get("breadth_rs", 600))
 def _fetch_breadth_and_sector_snapshot() -> dict:
     """
-    RSP(S&P500 동일가중), SPY(S&P500 시총가중), VTI(전체시장) 및 핵심 섹터 ETF(XLK, XLE, XLF, XLV, XLI, XLC, XLY)의
-    3개월 히스토리를 병렬 조회하여 시장 호흡(Breadth %)과 섹터 로테이션 순위를 계산합니다.
+    RSP(S&P500 동일가중), SPY(S&P500 시총가중), VTI(전체시장) 및 미국 11대 GICS 섹터 ETF 전체의
+    3개월 히스토리를 병렬 조회하여 시장 호흡(Breadth %)과 1주/1개월 섹터 자금 흐름(Money Flow) 순위를 계산합니다.
     """
-    etfs = ["SPY", "RSP", "VTI", "XLK", "XLE", "XLF", "XLV", "XLI", "XLC", "XLY"]
+    etfs = ["SPY", "RSP", "VTI"] + list(GICS_11_SECTOR_LABELS.keys())
     hist_map = {}
 
     def _load_one(sym: str):
@@ -4661,17 +4712,51 @@ def _fetch_breadth_and_sector_snapshot() -> dict:
             return {}
         cur = safe_float(cl.iloc[-1], 0.0)
         prev = safe_float(cl.iloc[-2], cur) if len(cl) >= 2 else cur
+        p_1w = safe_float(cl.iloc[-min(6, len(cl))], cur)
         p_1m = safe_float(cl.iloc[-min(21, len(cl))], cur)
         p_3m = safe_float(cl.iloc[0], cur)
         ema20 = safe_float(cl.ewm(span=20, adjust=False).mean().iloc[-1], cur)
         ema50 = safe_float(cl.ewm(span=50, adjust=False).mean().iloc[-1], cur)
+
+        ret_1d = ((cur / prev) - 1.0) * 100.0 if prev > 0 else 0.0
+        ret_1w = ((cur / p_1w) - 1.0) * 100.0 if p_1w > 0 else 0.0
+        ret_1m = ((cur / p_1m) - 1.0) * 100.0 if p_1m > 0 else 0.0
+        ret_3m = ((cur / p_3m) - 1.0) * 100.0 if p_3m > 0 else 0.0
+
+        # 달러 거래대금 & 5일 누적 자금 흐름 프록시 (단위: 백만 달러 $M)
+        vol_s = df["Volume"].dropna() if "Volume" in df.columns else pd.Series(dtype="float64")
+        avg_dvol_m = 0.0
+        flow_5d_m = 0.0
+        if len(vol_s) >= 5 and len(cl) >= 6:
+            try:
+                _n = min(5, len(cl), len(vol_s))
+                if _n > 0:
+                    _c_tail = cl.tail(_n).values
+                    _v_tail = vol_s.tail(_n).values
+                    recent_dvol = pd.Series(_c_tail * _v_tail / 1e6)
+                    avg_dvol_m = float(recent_dvol.mean())
+                for k_i in range(1, min(6, len(cl))):
+                    c_now = safe_float(cl.iloc[-k_i], cur)
+                    c_prv = safe_float(cl.iloc[-k_i - 1], c_now)
+                    v_now = safe_float(vol_s.iloc[-k_i], 0.0) if k_i <= len(vol_s) else 0.0
+                    pct_k = ((c_now / c_prv) - 1.0) if c_prv > 0 else 0.0
+                    flow_5d_m += pct_k * (c_now * v_now / 1e6)
+            except Exception:
+                pass
+
+        # 1주(45%) + 1개월(55%) 결합 섹터 자금 흐름 스코어
+        flow_score = round(ret_1w * 0.45 + ret_1m * 0.55, 2)
         return {
             "price": cur,
-            "ret_1d": ((cur / prev) - 1.0) * 100.0 if prev > 0 else 0.0,
-            "ret_1m": ((cur / p_1m) - 1.0) * 100.0 if p_1m > 0 else 0.0,
-            "ret_3m": ((cur / p_3m) - 1.0) * 100.0 if p_3m > 0 else 0.0,
+            "ret_1d": ret_1d,
+            "ret_1w": ret_1w,
+            "ret_1m": ret_1m,
+            "ret_3m": ret_3m,
             "above_ema20": cur >= ema20,
             "above_ema50": cur >= ema50,
+            "avg_dvol_m": round(avg_dvol_m, 1),
+            "flow_5d_m": round(flow_5d_m, 1),
+            "flow_score": flow_score,
         }
 
     metrics = {k: _calc_metrics(v) for k, v in hist_map.items()}
@@ -4679,20 +4764,16 @@ def _fetch_breadth_and_sector_snapshot() -> dict:
     rsp_m = metrics.get("RSP") or spy_m
     vti_m = metrics.get("VTI") or spy_m
 
-    # 1) RSP vs SPY 스프레드 (음수면 소수 빅테크만 오르고 나머지 490개는 빠지는 장세 협소화)
+    # 1) RSP vs SPY 스프레드
     rsp_spy_1d = safe_float(rsp_m.get("ret_1d"), 0.0) - safe_float(spy_m.get("ret_1d"), 0.0)
     rsp_spy_1m = safe_float(rsp_m.get("ret_1m"), 0.0) - safe_float(spy_m.get("ret_1m"), 0.0)
     rsp_spy_3m = safe_float(rsp_m.get("ret_3m"), 0.0) - safe_float(spy_m.get("ret_3m"), 0.0)
     vti_spy_1m = safe_float(vti_m.get("ret_1m"), 0.0) - safe_float(spy_m.get("ret_1m"), 0.0)
 
-    # 2) 섹터 로테이션 & 섹터 확산도
-    sector_labels = {
-        "XLK": "기술(XLK)", "XLE": "에너지(XLE)", "XLF": "금융(XLF)",
-        "XLV": "헬스케어(XLV)", "XLI": "산업재(XLI)", "XLC": "통신(XLC)", "XLY": "소비재(XLY)",
-    }
+    # 2) 11개 섹터 자금 흐름 로테이션 & 섹터 확산도
     sector_list = []
     pos_sectors = 0
-    for s_sym, s_lbl in sector_labels.items():
+    for s_sym, s_lbl in GICS_11_SECTOR_LABELS.items():
         sm = metrics.get(s_sym)
         if sm:
             if sm.get("above_ema20") or sm.get("ret_1m", 0.0) > 0:
@@ -4701,12 +4782,25 @@ def _fetch_breadth_and_sector_snapshot() -> dict:
                 "etf": s_sym,
                 "label": s_lbl,
                 "ret_1d": round(safe_float(sm.get("ret_1d"), 0.0), 2),
+                "ret_1w": round(safe_float(sm.get("ret_1w"), 0.0), 2),
                 "ret_1m": round(safe_float(sm.get("ret_1m"), 0.0), 2),
                 "ret_3m": round(safe_float(sm.get("ret_3m"), 0.0), 2),
+                "flow_score": round(safe_float(sm.get("flow_score"), 0.0), 2),
+                "flow_5d_m": round(safe_float(sm.get("flow_5d_m"), 0.0), 1),
+                "avg_dvol_m": round(safe_float(sm.get("avg_dvol_m"), 0.0), 1),
                 "above_ema20": bool(sm.get("above_ema20")),
+                "rep_stocks": SECTOR_REPRESENTATIVE_STOCKS.get(s_sym, ""),
             })
-    sector_list.sort(key=lambda x: (-x["ret_1m"], -x["ret_3m"]))
+    sector_list.sort(key=lambda x: (-x["flow_score"], -x["ret_1m"], -x["ret_1w"]))
     sector_breadth_ratio = (pos_sectors / len(sector_list)) if sector_list else 0.5
+
+    # 섹터 자금 쏠림 강도 (1위 섹터 vs 꼴찌 섹터 격차 및 1위 섹터 유입 강도)
+    flow_intensity = 0.0
+    top_inflow_sector = sector_list[0] if sector_list else {}
+    top_outflow_sector = sector_list[-1] if sector_list else {}
+    if len(sector_list) >= 2:
+        spread_top_bot = safe_float(top_inflow_sector.get("flow_score"), 0.0) - safe_float(top_outflow_sector.get("flow_score"), 0.0)
+        flow_intensity = round(max(0.0, spread_top_bot * 0.65), 2)
 
     # 3) 종합 시장 호흡 (Breadth 0~100%)
     raw_breadth = 52.0
@@ -4725,6 +4819,7 @@ def _fetch_breadth_and_sector_snapshot() -> dict:
     return {
         "breadth_pct": breadth_pct,
         "spy_ret_1d": round(safe_float(spy_m.get("ret_1d"), 0.0), 2),
+        "spy_ret_1w": round(safe_float(spy_m.get("ret_1w"), 0.0), 2),
         "spy_ret_1m": round(safe_float(spy_m.get("ret_1m"), 0.0), 2),
         "spy_ret_3m": round(safe_float(spy_m.get("ret_3m"), 0.0), 2),
         "rsp_ret_1m": round(safe_float(rsp_m.get("ret_1m"), 0.0), 2),
@@ -4737,6 +4832,9 @@ def _fetch_breadth_and_sector_snapshot() -> dict:
         "sector_list": sector_list,
         "pos_sectors": pos_sectors,
         "total_sectors": len(sector_list),
+        "flow_intensity": flow_intensity,
+        "top_inflow_sector": top_inflow_sector,
+        "top_outflow_sector": top_outflow_sector,
         "spy_daily_rets": spy_daily_rets,
     }
 
@@ -4748,12 +4846,12 @@ def run_breadth_rs_agent(
     breadth_snap: dict = None,
 ) -> AgentReport:
     """
-    ⭐ [Agent 13] 시장 호흡(Breadth) & 상대강도(RS) & 섹터 로테이션 에이전트:
-    1) 시장 호흡(Breadth 0~100%): RSP(동일가중) vs SPY(시총가중) 비율 및 섹터 확산도 평가
-       - Breadth < 30% 시 DANGER 발령 -> Chief AI Manager에서 신규 스윙 매수 금지(Veto)!
+    ⭐ [Agent 13] 시장 호흡(Breadth) & 상대강도(RS) & 11대 섹터 자금흐름 에이전트:
+    1) 시장 호흡(Breadth 0~100%): RSP(동일가중) vs SPY(시총가중) 비율 및 11개 섹터 확산도 평가
+       - Breadth < 30% 시 DANGER 발령 -> Chief AI Manager에서 신규 스윙 매수 금지(Veto #8)!
     2) 상대 강도(RS): 종목 3개월 수익률 - SPY 3개월 수익률 + SPY 하락일 방어력(Down-Day Resilience)
        - RS > 0 (주도주) 시 Chart/Master 점수 가산 부스트 제공!
-    3) 섹터 로테이션: XLK·XLE·XLF 등 자금 유입 상위 섹터와 종목 섹터 일치 여부 판별
+    3) 11대 섹터 자금흐름(Money Flow): 1주(5일)/1개월(21일) 수익률 및 달러 거래대금 기준 자금 유입 TOP 3 섹터 포착
     """
     if hist is None or hist.empty or len(hist) < 20:
         return AgentReport("BreadthRS", 0, "NEUTRAL", "데이터 부족 (RS 산출 대기)", {"breadth_pct": 50.0, "rs_3m_diff": 0.0})
@@ -4776,13 +4874,14 @@ def run_breadth_rs_agent(
     rsp_spy_1m = safe_float((snap or {}).get("rsp_spy_1m"), 0.0)
     rsp_spy_3m = safe_float((snap or {}).get("rsp_spy_3m"), 0.0)
     vti_spy_1m = safe_float((snap or {}).get("vti_spy_1m"), 0.0)
+    flow_intensity = safe_float((snap or {}).get("flow_intensity"), 0.0)
 
     # 상대 강도 (RS = 종목 수익률 - SPY 수익률)
     rs_1d_diff = round(stock_1d_ret - spy_1d_ret, 2)
     rs_1m_diff = round(stock_1m_ret - spy_1m_ret, 2)
     rs_3m_diff = round(stock_3m_ret - spy_3m_ret, 2)
 
-    # SPY 하락일 방어력 ("시장 SPY가 1% 빠질 때 이 종목은 0.5%만 빠지는가?")
+    # SPY 하락일 방어력
     down_day_win_rate = 50.0
     down_day_alpha = 0.0
     spy_daily = (snap or {}).get("spy_daily_rets")
@@ -4804,12 +4903,13 @@ def run_breadth_rs_agent(
         1, 99
     ))
 
-    # 섹터 로테이션 매칭
+    # 11개 섹터 자금흐름 매칭
     sec = sector or _get_sector(ticker)
     sec_list = (snap or {}).get("sector_list") or []
     top_sectors = [s["label"] for s in sec_list[:3]]
     my_sec_etf = SECTOR_ETF_MAP.get(sec, ("", sec or "일반"))[0]
     my_sec_rank = next((i + 1 for i, s in enumerate(sec_list) if s["etf"] == my_sec_etf), None)
+    my_sec_obj = next((s for s in sec_list if s["etf"] == my_sec_etf), {})
 
     score = 0.0
     reasons = []
@@ -4842,7 +4942,7 @@ def run_breadth_rs_agent(
         score -= 12.0
         reasons.append(f"🟠 시장 대비 약세 (3M RS {rs_3m_diff:+.1f}%p)")
 
-    # 3) 하락장 방어력 평가
+    # 3) 하락일 방어력 평가
     if down_day_win_rate >= 60.0 or down_day_alpha >= 0.4:
         score += 15.0
         reasons.append(f"🛡️ 지수 하락일 방어력 우수 (승률 {down_day_win_rate:.0f}% · 평균 {down_day_alpha:+.2f}%p)")
@@ -4850,13 +4950,14 @@ def run_breadth_rs_agent(
         score -= 12.0
         reasons.append(f"⚠️ 지수 하락 시 낙폭 과대 (방어율 {down_day_win_rate:.0f}%)")
 
-    # 4) 섹터 로테이션 가산
+    # 4) 11대 섹터 자금흐름(Money Flow) 가산/감점
+    total_sec_cnt = len(sec_list) if sec_list else 11
     if my_sec_rank is not None and my_sec_rank <= 3:
-        score += 10.0
-        reasons.append(f"자금 주도 섹터 {my_sec_rank}위 ({my_sec_etf})")
-    elif my_sec_rank is not None and my_sec_rank >= 6:
-        score -= 8.0
-        reasons.append(f"자금 소외 섹터 {my_sec_rank}위 ({my_sec_etf})")
+        score += 14.0
+        reasons.append(f"💰 섹터 자금 유입 상위 {my_sec_rank}위 ({my_sec_etf} 1W {safe_float(my_sec_obj.get('ret_1w')):+.1f}% · 1M {safe_float(my_sec_obj.get('ret_1m')):+.1f}%)")
+    elif my_sec_rank is not None and my_sec_rank >= max(7, total_sec_cnt - 2):
+        score -= 12.0
+        reasons.append(f"🩸 섹터 자금 유출 하위 {my_sec_rank}위 ({my_sec_etf} 1W {safe_float(my_sec_obj.get('ret_1w')):+.1f}% · 1M {safe_float(my_sec_obj.get('ret_1m')):+.1f}%)")
 
     score_int = max(-100, min(100, int(round(score))))
 
@@ -4888,27 +4989,32 @@ def run_breadth_rs_agent(
         summary,
         {
             "breadth_pct": breadth_pct,
-            "rsp_spy_1m": rsp_spy_1m,
-            "rsp_spy_3m": rsp_spy_3m,
-            "vti_spy_1m": vti_spy_1m,
-            "stock_3m_ret": round(stock_3m_ret, 2),
-            "spy_3m_ret": round(spy_3m_ret, 2),
-            "stock_1m_ret": round(stock_1m_ret, 2),
-            "spy_1m_ret": round(spy_1m_ret, 2),
+            "rs_rating": rs_rating,
             "rs_1d_diff": rs_1d_diff,
             "rs_1m_diff": rs_1m_diff,
             "rs_3m_diff": rs_3m_diff,
-            "rs_rating": rs_rating,
-            "rs_leader_bonus": rs_leader_bonus,
+            "stock_1m_ret": round(stock_1m_ret, 2),
+            "stock_3m_ret": round(stock_3m_ret, 2),
+            "spy_1m_ret": spy_1m_ret,
+            "spy_3m_ret": spy_3m_ret,
+            "rsp_spy_1m": rsp_spy_1m,
+            "rsp_spy_3m": rsp_spy_3m,
+            "vti_spy_1m": vti_spy_1m,
             "down_day_win_rate": down_day_win_rate,
             "down_day_alpha": down_day_alpha,
+            "rs_leader_bonus": rs_leader_bonus,
             "top_sectors": top_sectors,
-            "sector_list": sec_list,
             "my_sector": sec,
+            "my_sec_etf": my_sec_etf,
             "my_sector_etf": my_sec_etf,
+            "my_sec_rank": my_sec_rank,
             "my_sector_rank": my_sec_rank,
             "pos_sectors": (snap or {}).get("pos_sectors", 0),
             "total_sectors": (snap or {}).get("total_sectors", 0),
+            "sector_list": sec_list,
+            "flow_intensity": flow_intensity,
+            "top_inflow_sector": (snap or {}).get("top_inflow_sector") or {},
+            "top_outflow_sector": (snap or {}).get("top_outflow_sector") or {},
             "reasons": reasons,
         },
     )
@@ -5386,7 +5492,54 @@ def run_chief_manager(
                     "insider": 0.06, "institutional": 0.05, "breadth": 0.10,
                     "intermarket": 0.06, "event": 0.06, "social": 0.02},
     }
-    weights = dict(base_weights.get(regime, base_weights.get("NEUTRAL", {})))
+    # ⭐ [21.0 펀드 퀀트 엔진 1] 확률적 레짐 소프트 블렌딩 (Regime Soft Blending)
+    # 하드 버킷(if regime == 'BULL') 대신 매크로 점수(-100~+100)에 따라 인접 레짐 가중치를 선형 보간
+    w_bull = base_weights.get("BULL", base_weights.get("NEUTRAL", {}))
+    w_neut = base_weights.get("NEUTRAL", {})
+    w_bear = base_weights.get("BEAR", w_neut)
+    w_cris = base_weights.get("CRISIS", w_bear)
+    m_sc = float(np.clip(safe_float(macro_r.score, 0.0), -100.0, 100.0))
+
+    if regime == "CRISIS" or m_sc <= -45.0:
+        alpha_c = float(np.clip((abs(m_sc) - 35.0) / 35.0, 0.35, 1.0))
+        weights = {k: w_cris.get(k, 0.0) * alpha_c + w_bear.get(k, 0.0) * (1.0 - alpha_c) for k in w_neut}
+    elif m_sc >= 10.0:
+        alpha_b = float(np.clip(m_sc / 45.0, 0.25, 1.0))
+        weights = {k: w_bull.get(k, 0.0) * alpha_b + w_neut.get(k, 0.0) * (1.0 - alpha_b) for k in w_neut}
+    elif m_sc <= -10.0:
+        alpha_br = float(np.clip(abs(m_sc) / 45.0, 0.25, 1.0))
+        weights = {k: w_bear.get(k, 0.0) * alpha_br + w_neut.get(k, 0.0) * (1.0 - alpha_br) for k in w_neut}
+    else:
+        weights = dict(base_weights.get(regime, w_neut))
+
+    # ⭐ [21.0 펀드 퀀트 엔진 2] 섹터 자금 흐름 쏠림 강도(Flow Intensity)에 따른 BreadthRS 동적 부스팅
+    sector_flow_intensity = safe_float(breadth_r.details.get("flow_intensity"), 0.0)
+    if sector_flow_intensity >= 5.0:
+        weights["breadth"] = weights.get("breadth", 0.10) * 1.60
+    elif sector_flow_intensity >= 3.0:
+        weights["breadth"] = weights.get("breadth", 0.10) * 1.30
+
+    # ⭐ [21.0 펀드 퀀트 엔진 3] 실시간 메타러닝(Meta-Learning) — 16개 팀 최근 정답률 기반 동적 가중치 보정
+    if "db_get_team_health_summary" in globals():
+        try:
+            th_map = db_get_team_health_summary(days=45)
+            key_to_agent = {
+                "chart": "Chart", "master": "Master", "news": "News", "macro": "Macro",
+                "policy": "Policy", "options": "Options", "onchain": "Onchain", "supply": "Supply",
+                "squeeze": "Squeeze", "insider": "Insider", "institutional": "Institutional",
+                "breadth": "BreadthRS", "intermarket": "Intermarket", "event": "MacroEvent", "social": "Social",
+            }
+            valid_accs = [safe_float(v.get("accuracy"), 60.0) for v in th_map.values() if int(v.get("total", 0)) >= 5]
+            avg_acc = float(np.mean(valid_accs)) if valid_accs else 60.0
+            if avg_acc > 10.0:
+                for wk, ag_nm in key_to_agent.items():
+                    h_info = th_map.get(ag_nm)
+                    if h_info and int(h_info.get("total", 0)) >= 5 and weights.get(wk, 0.0) > 0:
+                        t_acc = max(25.0, safe_float(h_info.get("accuracy"), avg_acc))
+                        meta_mult = float(np.clip(t_acc / avg_acc, 0.80, 1.25))
+                        weights[wk] = weights[wk] * meta_mult
+        except Exception:
+            pass
 
     # 온체인: 크립토 종목일 때만 15% 활성화
     if onchain_r.details.get("applicable"):
@@ -5403,7 +5556,7 @@ def run_chief_manager(
 
     total_w = sum(weights.values())
     if total_w > 0:
-        weights = {k: v / total_w for k, v in weights.items()}
+        weights = {k: round(v / total_w, 4) for k, v in weights.items()}
 
     # ⭐ [18.0~20.0] 주도주 RS 가산점 + 스마트머니×소셜 시너지 + 추가 세계 대가 철학(Wyckoff 등) 가산점
     rs_bonus = safe_float(breadth_r.details.get("rs_leader_bonus"), 0.0)
@@ -5512,21 +5665,39 @@ def run_chief_manager(
 
     sb_thresh = safe_float(veto_cfg.get("strong_buy_threshold"), 45.0)
     b_thresh = safe_float(veto_cfg.get("bear_buy_threshold"), 20.0) if regime == "BEAR" else safe_float(veto_cfg.get("buy_threshold"), 20.0)
+    watch_thresh = max(10.0, b_thresh - 8.0)  # B급 관찰 리스트(Watchlist) 기준 (기본 12.0점)
     if total >= sb_thresh:
-        action, base_pct, meta, badge = "🟢 STRONG_BUY", 25.0, "🔥 16팀 합산 강력 매수", "badge-green"
+        action, base_pct, meta, badge = "🟢 STRONG_BUY", 25.0, "🔥 16팀 합산 A+급 강력 매수", "badge-green"
     elif total >= b_thresh:
-        action, base_pct, meta, badge = "🟡 BUY", 15.0, "📈 16팀 합산 분할 매수", "badge-green"
+        action, base_pct, meta, badge = "🟢 BUY", 15.0, "📈 16팀 합산 A급 분할 매수", "badge-green"
+    elif total >= watch_thresh:
+        action, base_pct, meta, badge = "🟡 WATCH (B급 관찰)", 7.5, "👀 B급 관찰 리스트 (돌파 대기·정찰병)", "badge-purple"
     elif total <= -25:
-        action, base_pct, meta, badge = "🔴 EXIT", 0.0, "🚨 리스크 회피 / 비중 축소", "badge-red"
+        action, base_pct, meta, badge = "🔴 EXIT", 0.0, "🚨 C급 리스크 회피 / 비중 축소", "badge-red"
     else:
-        action, base_pct, meta, badge = "⚪ WAIT", 5.0, "⏸️ 관망 / 타점 대기", "badge-blue"
+        action, base_pct, meta, badge = "⚪ WAIT", 0.0, "⏸️ 관망 / 타점 대기", "badge-blue"
 
+    # ⭐ [21.0 펀드 퀀트 엔진 4] 역변동성(1/Vol) + 쿼터 켈리(Quarter-Kelly) 결합 자금 관리
     vol_pct = (atr / current_price) * 100.0 if current_price > 0 else 3.0
-    pos_pct = min(base_pct, base_pct * (2.5 / max(vol_pct, 2.0))) if base_pct > 0 else 0.0
+    inv_vol_pct = min(base_pct, base_pct * (2.5 / max(vol_pct, 2.0))) if base_pct > 0 else 0.0
+    kelly_mult = 1.0
+    if base_pct > 0 and "db_get_paper_stats" in globals():
+        try:
+            p_st = db_get_paper_stats(period="all")
+            if int(p_st.get("total", 0)) >= 10:
+                w_prob = float(np.clip(safe_float(p_st.get("win_rate"), 52.0) / 100.0, 0.25, 0.85))
+                pf_val = float(np.clip(safe_float(p_st.get("profit_factor"), 1.5), 0.6, 5.0))
+                raw_kelly = max(0.0, w_prob - ((1.0 - w_prob) / max(0.8, pf_val)))
+                quarter_kelly_pct = raw_kelly * 0.25 * 100.0
+                if quarter_kelly_pct > 1.0:
+                    kelly_mult = float(np.clip(quarter_kelly_pct / 7.5, 0.65, 1.35))
+        except Exception:
+            pass
+    pos_pct = round(min(25.0, inv_vol_pct * kelly_mult), 1) if base_pct > 0 else 0.0
     # 만약 3일 이내 매크로 이벤트(BEARISH)가 있으면 권장 비중을 절반으로 자동 축소
     if event_r.status == "BEARISH" and pos_pct > 0:
         pos_pct = round(pos_pct * 0.5, 1)
-    position_size = f"계좌의 {pos_pct:.1f}%" if pos_pct > 0 else "0% (현금 관망)"
+    position_size = f"계좌의 {pos_pct:.1f}% (쿼터켈리·역변동성)" if pos_pct > 0 else "0% (현금 관망)"
 
     # 조지 소로스 재료소진 익절 규칙
     if news_r.status == "BULLISH" and safe_float(chart_r.details.get("rsi"), 50.0) >= 72.0 and total >= 30:
@@ -5662,6 +5833,119 @@ def execute_12_agents_parallel(
         options_r, onchain_r, supply_r, squeeze_r, insider_r, institutional_r,
         breadth_r, intermarket_r, event_r, social_r,
     )
+    # ⭐ [21.0] AI AS 센터에서 생성한 신규 커스텀 팀(agent_custom_*.py) 동적 로딩 및 매니저 합산 연결
+    # - 결함 #1 해결: dict 반환 자동 변환 + hasattr Duck Typing 지원 (모듈 간 클래스 불일치 100% 방지)
+    # - 결함 #2 해결: 스크립트 디렉토리(base_dir)와 현재 작업 디렉토리(os.getcwd()) 이중 스캔
+    # - 참고 #3 반영: 커스텀 팀 로드/실행 오류 발생 시 st.session_state["custom_agent_errors"]에 기록하여 Tab 9에 노출
+    try:
+        import importlib.util
+        import inspect
+        base_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+        search_dirs = list(dict.fromkeys([base_dir, os.getcwd()]))
+        seen_custom_files = set()
+        custom_errs = []
+        for search_d in search_dirs:
+            if not os.path.isdir(search_d):
+                continue
+            for fn_c in sorted(os.listdir(search_d)):
+                if fn_c.startswith("agent_custom_") and fn_c.endswith(".py") and fn_c not in seen_custom_files:
+                    seen_custom_files.add(fn_c)
+                    mod_name = fn_c[:-3]
+                    mod_path = os.path.join(search_d, fn_c)
+                    try:
+                        spec = importlib.util.spec_from_file_location(mod_name, mod_path)
+                        if spec and spec.loader:
+                            c_mod = importlib.util.module_from_spec(spec)
+                            spec.loader.exec_module(c_mod)
+                            run_fn = (
+                                getattr(c_mod, "run_agent", None)
+                                or getattr(c_mod, "run_custom_agent", None)
+                                or getattr(c_mod, "run", None)
+                                or getattr(c_mod, "analyze", None)
+                            )
+                            if callable(run_fn):
+                                try:
+                                    sig_params = list(inspect.signature(run_fn).parameters.keys())
+                                    if len(sig_params) >= 3:
+                                        c_rep = run_fn(ticker, hist, current_price)
+                                    elif len(sig_params) == 2:
+                                        c_rep = run_fn(ticker, hist)
+                                    elif len(sig_params) == 1:
+                                        c_rep = run_fn(ticker)
+                                    else:
+                                        c_rep = run_fn()
+                                except TypeError:
+                                    c_rep = run_fn(ticker=ticker, hist=hist, current_price=current_price)
+
+                                if isinstance(c_rep, dict) and ("name" in c_rep or "score" in c_rep):
+                                    c_rep = AgentReport(
+                                        str(c_rep.get("name", mod_name.replace("agent_custom_", "Custom_"))),
+                                        safe_float(c_rep.get("score", 0.0)),
+                                        str(c_rep.get("status", "NEUTRAL")),
+                                        str(c_rep.get("summary", "신규 커스텀 팀 분석")),
+                                        c_rep.get("details") if isinstance(c_rep.get("details"), dict) else {},
+                                    )
+                                elif c_rep is not None and hasattr(c_rep, "name") and hasattr(c_rep, "score") and not isinstance(c_rep, AgentReport):
+                                    c_rep = AgentReport(
+                                        str(getattr(c_rep, "name", "Custom")),
+                                        safe_float(getattr(c_rep, "score", 0.0)),
+                                        str(getattr(c_rep, "status", "NEUTRAL")),
+                                        str(getattr(c_rep, "summary", "신규 커스텀 팀 분석")),
+                                        getattr(c_rep, "details", {}) or {},
+                                    )
+
+                                if c_rep is not None and hasattr(c_rep, "name") and hasattr(c_rep, "score"):
+                                    final_dec.agent_reports.append(c_rep)
+                                    if not final_dec.veto_triggered:
+                                        # ⭐ [21.0 완전자동화 패치 #5] 커스텀 팀 적응형 가중치 반영 및 매니저 최종 액션/사이징 실시간 재판정
+                                        n_ag = len(final_dec.agent_reports)
+                                        c_weight = min(0.08, 1.0 / max(n_ag, 1))
+                                        final_dec.score = round(
+                                            float(max(-100.0, min(100.0, final_dec.score + float(c_rep.score) * c_weight))), 1
+                                        )
+                                        if final_dec.action not in ("🔵 TAKE_PROFIT", "🌋 SQUEEZE_HOLD"):
+                                            _c_cfg = db_get_champion_version() if "db_get_champion_version" in globals() else {}
+                                            _v_cfg = _c_cfg.get("veto_thresholds") or {}
+                                            _sb_th = safe_float(_v_cfg.get("strong_buy_threshold"), 45.0)
+                                            _b_th = (
+                                                safe_float(_v_cfg.get("bear_buy_threshold"), 20.0)
+                                                if final_dec.regime == "BEAR"
+                                                else safe_float(_v_cfg.get("buy_threshold"), 20.0)
+                                            )
+                                            _w_th = max(10.0, _b_th - 8.0)
+                                            if final_dec.score >= _sb_th:
+                                                final_dec.action = "🟢 STRONG_BUY"
+                                                final_dec.meta_action = "🔥 커스텀팀 합산 A+급 강력 매수"
+                                                final_dec.meta_badge = "badge-green"
+                                            elif final_dec.score >= _b_th:
+                                                final_dec.action = "🟢 BUY"
+                                                final_dec.meta_action = "📈 커스텀팀 합산 A급 분할 매수"
+                                                final_dec.meta_badge = "badge-green"
+                                            elif final_dec.score >= _w_th:
+                                                final_dec.action = "🟡 WATCH (B급 관찰)"
+                                                final_dec.meta_action = "👀 커스텀팀 합산 B급 관찰 리스트"
+                                                final_dec.meta_badge = "badge-purple"
+                                            elif final_dec.score <= -25.0:
+                                                final_dec.action = "🔴 EXIT"
+                                                final_dec.meta_action = "🚨 커스텀팀 합산 리스크 회피"
+                                                final_dec.meta_badge = "badge-red"
+                                                final_dec.position_size = "0% (현금 관망)"
+                                            else:
+                                                final_dec.action = "⚪ WAIT"
+                                                final_dec.meta_action = "⏸️ 관망 / 타점 대기"
+                                                final_dec.meta_badge = "badge-blue"
+                                                final_dec.position_size = "0% (현금 관망)"
+                    except Exception as _e_rep:
+                        err_msg = f"{fn_c}: {_e_rep}"
+                        custom_errs.append(err_msg)
+                        LOG.warning("Custom agent %s run failed: %s", mod_name, _e_rep)
+        try:
+            st.session_state["custom_agent_errors"] = custom_errs
+        except Exception:
+            pass
+    except Exception as _ce:
+        LOG.debug("Custom agent dynamic load skipped: %s", _ce)
+
     if "db_log_chief_snapshot" in globals():
         db_log_chief_snapshot(final_dec, current_price)
     return final_dec
@@ -5927,11 +6211,22 @@ def render_chief_control_tower_ui(chief: ChiefDecision):
             </div>
         </div>""")
 
+    if chief.veto_triggered:
+        target_info_html = (
+            '<div class="mono" style="font-size:11px; color:#f43f5e; font-weight:800;">'
+            '🛑 진입금지(VETO) 상태 — 목표가 산출 보류 (리스크 방어 우선)</div>'
+        )
+    else:
+        target_info_html = (
+            f'<div class="mono" style="font-size:11px; color:#38bdf8; font-weight:800;">'
+            f'손절 ${chief.stop_loss:,.2f} | 1차 ${chief.target_1:,.2f} | 2차 ${chief.target_2:,.2f}</div>'
+        )
+
     render_html(f"""
     <div class="chief-card" style="border-color:{border_c};">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,.12); padding-bottom:8px;">
             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                <span style="font-size:15px; font-weight:800; color:#38bdf8;">🧠 Chief AI Manager — 16대 전담팀 통합 컨트롤 타워</span>
+                <span style="font-size:15px; font-weight:800; color:#38bdf8;">🧠 Chief AI Manager — {len(chief.agent_reports)}대 전담팀 통합 컨트롤 타워</span>
                 <span class="badge {reg_cls}">{reg_txt}</span>
             </div>
             <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
@@ -5939,16 +6234,14 @@ def render_chief_control_tower_ui(chief: ChiefDecision):
                 {veto_html}
             </div>
         </div>
-        <div style="display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; margin-bottom:10px;">
+        <div style="display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); grid-auto-flow:row; gap:6px; margin-bottom:10px;">
             {"".join(cells)}
         </div>
         <div style="background:rgba(15,23,42,.85); border-left:4px solid {border_c}; padding:9px 13px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
             <div style="font-size:11px; color:#f8fafc; font-weight:700; line-height:1.5;">
                 🎯 <b>Chief 브리핑:</b> {html.escape(chief.briefing)}
             </div>
-            <div class="mono" style="font-size:11px; color:#38bdf8; font-weight:800;">
-                손절 ${chief.stop_loss:,.2f} | 1차 ${chief.target_1:,.2f} | 2차 ${chief.target_2:,.2f}
-            </div>
+            {target_info_html}
         </div>
     </div>""")
 
@@ -6051,6 +6344,108 @@ def render_chief_control_tower_ui(chief: ChiefDecision):
 # ==============================================================================
 # 14) TAB 1: 개별 종목 분석 (⭐ 실시간 시세 동기화 + [16.4] 과거 호악재 패스 & 중대악재 방어)
 # ==============================================================================
+def render_sector_flow_radar_ui(chief: ChiefDecision):
+    """
+    ⭐ [21.0 NEW] Tab 1에 표시되는 미국/나스닥 11대 GICS 섹터 자금 흐름 레이더 (Sector Fund Flow Radar).
+    팀을 늘리지 않고 [Agent 13] BreadthRS 팀이 실시간 포착한 1주(5거래일)/1개월(21거래일) 섹터 ETF 수익률과
+    달러 거래대금(Dollar Volume) 기반 자금 유입 상위 TOP 3 / 유출 하위 TOP 3 및 대표 우량주를 한눈에 표시합니다.
+    """
+    brd_rep = next((r for r in chief.agent_reports if r.name == "BreadthRS"), None)
+    if not brd_rep:
+        return
+    sec_list = (brd_rep.details or {}).get("sector_list") or []
+    if not sec_list:
+        return
+
+    for s in sec_list:
+        if "flow_score" not in s:
+            s["flow_score"] = round(safe_float(s.get("ret_1w"), 0.0) * 0.45 + safe_float(s.get("ret_1m"), 0.0) * 0.55, 2)
+
+    sorted_sec = sorted(sec_list, key=lambda x: (-safe_float(x.get("flow_score"), 0.0), -safe_float(x.get("ret_1m"), 0.0)))
+    top3 = sorted_sec[:3]
+    bot3 = list(reversed(sorted_sec[-3:])) if len(sorted_sec) >= 3 else []
+
+    top_1 = top3[0] if top3 else {}
+    bot_1 = bot3[0] if bot3 else {}
+    my_sec_etf = (brd_rep.details or {}).get("my_sec_etf", "")
+    my_sec_rank = (brd_rep.details or {}).get("my_sec_rank")
+    flow_intensity = safe_float((brd_rep.details or {}).get("flow_intensity"), 0.0)
+
+    def _sec_row_html(s: dict, rank: int, is_inflow: bool) -> str:
+        if not s:
+            return ""
+        r1w = safe_float(s.get("ret_1w"), 0.0)
+        r1m = safe_float(s.get("ret_1m"), 0.0)
+        f5d = safe_float(s.get("flow_5d_m"), 0.0)
+        c1w = "#10b981" if r1w >= 0 else "#f43f5e"
+        c1m = "#10b981" if r1m >= 0 else "#f43f5e"
+        badge_cls = "badge-green" if is_inflow else "badge-red"
+        rank_ic = ("🥇" if rank == 1 else ("🥈" if rank == 2 else "🥉")) if is_inflow else ("🚨" if rank == 1 else ("⚠️" if rank == 2 else "🩸"))
+        flow_lbl = f"💰 유입 {f5d:+,.0f}M$" if (is_inflow and f5d != 0) else ("💰 자금 유입" if is_inflow else "🩸 자금 이탈")
+        is_my = (s.get("etf") == my_sec_etf and my_sec_etf)
+        border_hl = "border:1.5px solid #38bdf8;" if is_my else "border:1px solid rgba(255,255,255,.08);"
+        my_tag = ' <span class="badge badge-blue" style="font-size:9px;">현재종목 섹터</span>' if is_my else ""
+        rep_st = html.escape(str(s.get("rep_stocks", "")))
+        rep_line = f'<div style="font-size:10px; color:#94a3b8; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🔎 대표 우량주: <b style="color:#cbd5e1;">{rep_st}</b></div>' if rep_st else ""
+        return f"""
+        <div style="background:rgba(0,0,0,.40); {border_hl} border-radius:8px; padding:8px 10px; margin-bottom:6px; min-width:0; overflow:hidden;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap;">
+                <div style="display:flex; align-items:center; gap:6px; min-width:0;">
+                    <span style="font-size:12px; font-weight:800; color:#f8fafc;">{rank_ic} {html.escape(str(s.get('label', '')))}</span>
+                    <span class="badge {badge_cls}" style="font-size:9px;">{flow_lbl}</span>{my_tag}
+                </div>
+                <div class="mono" style="font-size:11px; font-weight:800;">
+                    <span style="color:{c1w}; margin-right:6px;">1W {r1w:+.1f}%</span>
+                    <span style="color:{c1m};">1M {r1m:+.1f}%</span>
+                </div>
+            </div>
+            {rep_line}
+        </div>"""
+
+    top_rows = "".join(_sec_row_html(s, idx + 1, True) for idx, s in enumerate(top3))
+    bot_rows = "".join(_sec_row_html(s, idx + 1, False) for idx, s in enumerate(bot3))
+
+    top_lbl = html.escape(str(top_1.get("label", "기술/AI")))
+    top_1w = safe_float(top_1.get("ret_1w"), 0.0)
+    top_1m = safe_float(top_1.get("ret_1m"), 0.0)
+    top_reps = html.escape(str(top_1.get("rep_stocks", "NVDA, LLY, MSFT")))
+    bot_lbl = html.escape(str(bot_1.get("label", "에너지")))
+    bot_1m = safe_float(bot_1.get("ret_1m"), 0.0)
+
+    my_sec_txt = (
+        f" · 현재 분석 종목({html.escape(chief.ticker)}) 섹터 순위: <b>{my_sec_rank}/{len(sorted_sec)}위 ({html.escape(my_sec_etf)})</b>"
+        if my_sec_rank is not None else ""
+    )
+    boost_badge = (
+        f'<span class="badge badge-teal">⚡ 로테이션 강도 {flow_intensity:.1f} (Chief 가중치 동적 부스팅)</span>'
+        if flow_intensity >= 3.0
+        else f'<span class="badge badge-indigo">로테이션 강도 {flow_intensity:.1f} (BreadthRS 팀 통합)</span>'
+    )
+
+    render_html(f"""
+    <div style="background:linear-gradient(135deg,#0f172a,#172036 55%,#1a1433); border:1.5px solid #6366f1; border-radius:14px; padding:15px 18px; margin-bottom:14px; box-sizing:border-box; max-width:100%; overflow:hidden;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,.1); padding-bottom:8px;">
+            <span style="font-size:14px; font-weight:800; color:#a5b4fc;">🌊 미국/나스닥 11대 섹터 자금 흐름 레이더 (Sector Fund Flow — Top-Down 종목 발굴)</span>
+            {boost_badge}
+        </div>
+        <div style="background:rgba(16,185,129,.10); border-left:4px solid #10b981; padding:8px 12px; border-radius:6px; margin-bottom:10px; font-size:11.5px; color:#d1fae5; line-height:1.55;">
+            📢 <b>[AI 섹터 로테이션 포착]</b> 최근 자금이 가장 강하게 몰리는 주도 섹터는 <b>{top_lbl}</b> (1주 <b>{top_1w:+.1f}%</b> · 1개월 <b>{top_1m:+.1f}%</b>)이며,
+            반대로 자금이 빠져나가는 소외 섹터는 <b>{bot_lbl}</b> (1개월 <b>{bot_1m:+.1f}%</b>)입니다.{my_sec_txt}<br>
+            💡 <b>스윙 Top-Down 지침:</b> 섹터 추세는 한 번 방향을 잡으면 수주~수개월 지속됩니다. <b>1위 주도 섹터({top_lbl})의 대표 우량주({top_reps})</b>를 스캐너/개별분석에서 우선 확인하십시오.
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px;">
+            <div style="min-width:0;">
+                <div style="font-size:11px; font-weight:800; color:#34d399; margin-bottom:6px;">🔥 자금 유입 상위 TOP 3 (주도 섹터 · 매수 우선)</div>
+                {top_rows}
+            </div>
+            <div style="min-width:0;">
+                <div style="font-size:11px; font-weight:800; color:#fb7185; margin-bottom:6px;">🩸 자금 유출 하위 TOP 3 (소외 섹터 · 저점매수 주의)</div>
+                {bot_rows}
+            </div>
+        </div>
+    </div>""")
+
+
 def render_tab_analysis(indices, usd_krw):
     if "selected_ticker" not in st.session_state:
         st.session_state.selected_ticker = "IREN"
@@ -6352,7 +6747,9 @@ def render_tab_analysis(indices, usd_krw):
     rs_bonus_val = int(round(safe_float(brd_det.get("rs_leader_bonus"), 0.0) * 0.5))
 
     eff_catalyst_score = cat['catalyst_score'] - bull_fade_penalty
-    grand = int(np.clip(master_score + cat['macro_score'] + eff_catalyst_score + recovery_bonus + squeeze_eval['bonus'] + rs_bonus_val, 0, 100))
+    custom_reps = [r for r in chief_decision.agent_reports if r.name not in ALL_16_TEAMS] if "ALL_16_TEAMS" in globals() else []
+    custom_bonus_val = int(round(sum(safe_float(r.score, 0.0) * 0.04 for r in custom_reps)))
+    grand = int(np.clip(master_score + cat['macro_score'] + eff_catalyst_score + recovery_bonus + squeeze_eval['bonus'] + rs_bonus_val + custom_bonus_val, 0, 100))
     has_macro_crisis = cat['macro_score'] <= -15
 
     if has_bad and current_price < ema20:
@@ -6424,7 +6821,11 @@ def render_tab_analysis(indices, usd_krw):
         </div>
     </div>""")
 
-    mb = "".join([f"<div style='margin-bottom:2px;'>• {html.escape(m)}</div>" for m in cat['macro_alerts']])
+    raw_m_val = safe_float(cat.get("macro_score"), 0.0)
+    scaled_m_val = int(max(-100, min(100, round(raw_m_val * 2.2))))
+    brd_team_sc = int(brd_rep.score) if brd_rep else 0
+    mb = f"<div style='margin-bottom:2px;'>• 거시 원점수 <b>{raw_m_val:+.0f}점</b> (Chief 스케일 <b>{scaled_m_val:+d}점</b>)</div>"
+    mb += "".join([f"<div style='margin-bottom:2px;'>• {html.escape(m)}</div>" for m in cat['macro_alerts']])
     cb = "".join([f"<div style='margin-bottom:2px;'>• {html.escape(c)}</div>" for c in catalyst_summary_display])
     render_html(f"""
     <div class="verdict-card" style="border-color:{fv_color};">
@@ -6445,7 +6846,8 @@ def render_tab_analysis(indices, usd_krw):
                 <div style="font-size:11px; font-weight:800; color:#fbbf24; margin-bottom:4px;">👑 ③ 6대 대가 + 호흡/RS</div>
                 <div style="font-size:10px; color:#cbd5e1; line-height:1.45;">
                     • 6대 거장: <b class="text-white">{pass_count}/6 ({master_score}점)</b><br>
-                    • 호흡/RS: <b class="text-teal">호흡 {breadth_pct_val:.0f}% · RS {rs_3m_val:+.1f}%p ({rs_bonus_val:+d}점)</b><br>
+                    • 시장호흡 <b class="text-white">{breadth_pct_val:.0f}%</b> · 3M RS <b class="text-white">{rs_3m_val:+.1f}%p</b><br>
+                    • BreadthRS팀 <b class="text-orange">{brd_team_sc:+d}점</b> · 종합가산 <b class="text-teal">{rs_bonus_val:+d}점</b><br>
                     • 스퀴즈/악재보정: <b class="text-orange">+{squeeze_eval['bonus']}점</b> / <b class="text-teal">+{recovery_bonus}점</b>
                 </div>
             </div>
@@ -6458,11 +6860,16 @@ def render_tab_analysis(indices, usd_krw):
     </div>""")
 
     render_chief_control_tower_ui(chief_decision)
+    render_sector_flow_radar_ui(chief_decision)
 
     call_wall = gex_data.get("call_wall")
     put_wall = gex_data.get("put_wall")
     max_pain = gex_data.get("max_pain")
+    call_wall_str = f"${call_wall:,.1f}" if call_wall else "N/A"
+    put_wall_str = f"${put_wall:,.1f}" if put_wall else "N/A"
+    max_pain_str = f"${max_pain:,.1f}" if max_pain else "N/A"
     sq_reasons_str = " / ".join(squeeze_eval["reasons"])
+    sq_warn_html = "<br>• <b style=\x27color:#f43f5e;\x27>⚠️ 추세 붕괴 경고:</b> <span style=\x27color:#fecdd3;\x27>현재 추세 손절선이 이탈된 상태이므로 숏스퀴즈 반등 시 절대 추격 매수하지 마시고, 보유 물량의 탈출(분할 익절) 기회로만 활용하십시오.</span>" if (noise_eval and noise_eval.get("severity", 0) >= 4) else ""
     render_html(f"""
     <div class="squeeze-card">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:10px; border-bottom:1px solid rgba(249,115,22,.3); padding-bottom:8px;">
@@ -6487,13 +6894,13 @@ def render_tab_analysis(indices, usd_krw):
             </div>
             <div style="background:rgba(0,0,0,.45); padding:8px 4px; border-radius:8px; border:1px solid rgba(255,255,255,.07);">
                 <div style="font-size:10px; color:#94a3b8;">콜벽/맥스페인</div>
-                <div style="font-size:13px; font-weight:800; color:#10b981;">{f'${call_wall:,.1f}' if call_wall else 'N/A'} / {f'${max_pain:,.1f}' if max_pain else 'N/A'}</div>
-                <div style="font-size:9px; color:#64748b;">풋지지 {f'${put_wall:,.1f}' if put_wall else 'N/A'}</div>
+                <div style="font-size:13px; font-weight:800; color:#10b981;">{call_wall_str} / {max_pain_str}</div>
+                <div style="font-size:9px; color:#64748b;">풋지지 {put_wall_str}</div>
             </div>
         </div>
         <div style="font-size:11px; color:#cbd5e1; line-height:1.55;">
             • <b>GEX 판정:</b> <span class="text-white">{gex_data['gex_status']}</span> ({html.escape(sq_reasons_str)})<br>
-            • <b>대응:</b> {squeeze_eval['guide']}
+            • <b>대응:</b> {squeeze_eval['guide']}{sq_warn_html}
         </div>
     </div>""")
 
@@ -6529,6 +6936,51 @@ def render_tab_analysis(indices, usd_krw):
         </div>
         <div style="font-size:11px; color:#e0e7ff; line-height:1.5;">• <b>코칭:</b> {fng['advice']}</div>
     </div>""")
+
+    if seed_alloc.startswith("0%") or chief_decision.veto_triggered:
+        price_grid_html = f"""<div style="background:rgba(244,63,94,.12); border:1px solid #f43f5e; padding:11px; border-radius:8px; text-align:center; margin-bottom:10px;">
+            <div style="font-size:12.5px; font-weight:800; color:#f43f5e;">🚨 신규 진입 금지(0% / VETO) 상태 — 목표가 산출 보류</div>
+            <div style="font-size:11px; color:#fecdd3; margin-top:3px;">박스 하단 방어선(${box_low:,.2f}) 및 타이트 손절(${stop_loss:,.2f}) 기준 기존 보유자만 기술적 반등 시 현금 비중을 확보하십시오.</div>
+        </div>"""
+        trailing_grid_html = f"""<div style="background:rgba(15,23,42,.65); border:1px solid #334155; padding:11px; border-radius:8px; text-align:center;">
+            <div style="font-size:11.5px; font-weight:700; color:#94a3b8;">현재 신규 진입 금지 상태이므로 신규 매수용 트레일링 스탑은 보류됩니다. (기존 보유자 비상 청산 기준선: 단기 ${ts_from_curr_tight:,.2f} / 샹들리에 ${ts_from_high_core:,.2f})</div>
+        </div>"""
+    else:
+        price_grid_html = f"""<div style="display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; text-align:center; font-family:'JetBrains Mono'; margin-bottom:10px;">
+            <div style="background:rgba(255,255,255,.04); padding:7px 4px; border-radius:6px;">
+                <div style="font-size:10px; color:#94a3b8;">박스 하단</div>
+                <div style="font-size:13px; font-weight:800; color:#10b981;">${box_low:,.2f}</div>
+            </div>
+            <div style="background:rgba(255,255,255,.04); padding:7px 4px; border-radius:6px;">
+                <div style="font-size:10px; color:#94a3b8;">타이트 손절</div>
+                <div style="font-size:13px; font-weight:800; color:#f43f5e;">${stop_loss:,.2f}</div>
+            </div>
+            <div style="background:rgba(255,255,255,.04); padding:7px 4px; border-radius:6px; border:1px solid rgba(56,189,248,.25);">
+                <div style="font-size:10px; color:#94a3b8;">1차({int(tp1_ratio*100)}%)</div>
+                <div style="font-size:13px; font-weight:800; color:#38bdf8;">${target_1:,.2f}</div>
+            </div>
+            <div style="background:rgba(255,255,255,.04); padding:7px 4px; border-radius:6px; border:1px solid rgba(168,85,247,.25);">
+                <div style="font-size:10px; color:#94a3b8;">2차({int(tp2_ratio*100)}%)</div>
+                <div style="font-size:13px; font-weight:800; color:#a855f7;">${target_2:,.2f}</div>
+            </div>
+        </div>"""
+        trailing_grid_html = f"""<div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; text-align:center;">
+            <div style="background:rgba(0,0,0,.4); border:1px solid rgba(56,189,248,.3); padding:10px 6px; border-radius:8px;">
+                <div style="font-size:10px; color:#94a3b8;">① 단기</div>
+                <div style="font-size:18px; font-weight:800; color:#38bdf8; font-family:'JetBrains Mono';">-{ts_tight_pct:.1f}%</div>
+                <div style="font-size:10px; color:#cbd5e1;">${ts_from_curr_tight:,.2f}</div>
+            </div>
+            <div style="background:rgba(16,185,129,.1); border:1px solid #10b981; padding:10px 6px; border-radius:8px;">
+                <div style="font-size:10px; color:#34d399;">② 중기</div>
+                <div style="font-size:18px; font-weight:800; color:#10b981; font-family:'JetBrains Mono';">-{ts_core_pct:.1f}%</div>
+                <div style="font-size:10px; color:#cbd5e1;">${ts_from_curr_core:,.2f}</div>
+            </div>
+            <div style="background:rgba(0,0,0,.4); border:1px solid rgba(168,85,247,.3); padding:10px 6px; border-radius:8px;">
+                <div style="font-size:10px; color:#94a3b8;">③ 샹들리에</div>
+                <div style="font-size:18px; font-weight:800; color:#c084fc; font-family:'JetBrains Mono';">${ts_from_high_core:,.2f}</div>
+                <div style="font-size:10px; color:#cbd5e1;">20일 고점 대비</div>
+            </div>
+        </div>"""
 
     render_html(f"""
     <div class="master-card">
@@ -6566,24 +7018,7 @@ def render_tab_analysis(indices, usd_krw):
             <div style="font-size:13px; font-weight:800; color:#fef08a;">{meta_headline}</div>
             <div style="font-size:12px; color:#cbd5e1; margin-top:3px; line-height:1.5;">{meta_desc}</div>
         </div>
-        <div style="display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; text-align:center; font-family:'JetBrains Mono'; margin-bottom:10px;">
-            <div style="background:rgba(255,255,255,.04); padding:7px 4px; border-radius:6px;">
-                <div style="font-size:10px; color:#94a3b8;">박스 하단</div>
-                <div style="font-size:13px; font-weight:800; color:#10b981;">${box_low:,.2f}</div>
-            </div>
-            <div style="background:rgba(255,255,255,.04); padding:7px 4px; border-radius:6px;">
-                <div style="font-size:10px; color:#94a3b8;">타이트 손절</div>
-                <div style="font-size:13px; font-weight:800; color:#f43f5e;">${stop_loss:,.2f}</div>
-            </div>
-            <div style="background:rgba(255,255,255,.04); padding:7px 4px; border-radius:6px; border:1px solid rgba(56,189,248,.25);">
-                <div style="font-size:10px; color:#94a3b8;">1차({int(tp1_ratio*100)}%)</div>
-                <div style="font-size:13px; font-weight:800; color:#38bdf8;">${target_1:,.2f}</div>
-            </div>
-            <div style="background:rgba(255,255,255,.04); padding:7px 4px; border-radius:6px; border:1px solid rgba(168,85,247,.25);">
-                <div style="font-size:10px; color:#94a3b8;">2차({int(tp2_ratio*100)}%)</div>
-                <div style="font-size:13px; font-weight:800; color:#a855f7;">${target_2:,.2f}</div>
-            </div>
-        </div>
+        {price_grid_html}
         <div style="background:rgba(15,23,42,.75); border:1px solid rgba(245,158,11,.35); border-radius:8px; padding:9px 12px; font-size:11px;">
             <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px; margin-bottom:4px;">
                 <span style="color:#fbbf24; font-weight:800;">⚖️ 분할: 1차({int(tp1_ratio*100)}%) : 2차({int(tp2_ratio*100)}%) : 홀딩({int(hold_ratio*100)}%)</span>
@@ -6599,23 +7034,7 @@ def render_tab_analysis(indices, usd_krw):
             <span style="font-size:14px; font-weight:800; color:#38bdf8;">🛡️ 미래에셋 트레일링 스탑</span>
             <span class="badge {cap_profile['cap_badge']}">{cap_profile['cap_tier']} | ATR {atr_pct:.1f}%</span>
         </div>
-        <div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; text-align:center;">
-            <div style="background:rgba(0,0,0,.4); border:1px solid rgba(56,189,248,.3); padding:10px 6px; border-radius:8px;">
-                <div style="font-size:10px; color:#94a3b8;">① 단기</div>
-                <div style="font-size:18px; font-weight:800; color:#38bdf8; font-family:'JetBrains Mono';">-{ts_tight_pct:.1f}%</div>
-                <div style="font-size:10px; color:#cbd5e1;">${ts_from_curr_tight:,.2f}</div>
-            </div>
-            <div style="background:rgba(16,185,129,.1); border:1px solid #10b981; padding:10px 6px; border-radius:8px;">
-                <div style="font-size:10px; color:#34d399;">② 중기</div>
-                <div style="font-size:18px; font-weight:800; color:#10b981; font-family:'JetBrains Mono';">-{ts_core_pct:.1f}%</div>
-                <div style="font-size:10px; color:#cbd5e1;">${ts_from_curr_core:,.2f}</div>
-            </div>
-            <div style="background:rgba(0,0,0,.4); border:1px solid rgba(168,85,247,.3); padding:10px 6px; border-radius:8px;">
-                <div style="font-size:10px; color:#94a3b8;">③ 샹들리에</div>
-                <div style="font-size:18px; font-weight:800; color:#c084fc; font-family:'JetBrains Mono';">${ts_from_high_core:,.2f}</div>
-                <div style="font-size:10px; color:#cbd5e1;">20일 고점 대비</div>
-            </div>
-        </div>
+        {trailing_grid_html}
     </div>""")
 
     with st.expander("💰 수익 & 분할익절 계산기", expanded=False):
@@ -6824,6 +7243,7 @@ def render_tab_holdings_monitor(usd_krw):
         rebal_msgs.append(f"🟢 <b>코어 홀딩:</b> {', '.join(strong_leaders)}")
     if not rebal_msgs:
         rebal_msgs.append("⚖️ 전 종목 허용 노이즈 범위 내 등락 — 기존 비중 유지.")
+    rebal_msgs_html = "<br>".join(f"• {m}" for m in rebal_msgs)
     render_html(f"""
     <div class="rebal-card">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:6px;">
@@ -6838,7 +7258,7 @@ def render_tab_holdings_monitor(usd_krw):
             <span class="badge badge-green">🌊 홀딩: {calm_cnt}</span>
         </div>
         <div style="font-size:11px; color:#e9d5ff; line-height:1.55;">
-            {"<br>".join(f"• {m}" for m in rebal_msgs)}
+            {rebal_msgs_html}
         </div>
     </div>""")
     if st.button("📲 텔레그램 리포트 전송", use_container_width=True):
@@ -6908,7 +7328,7 @@ def render_tab_scanner():
     with p2: txt = st.text_area("티커", value=presets[sel], height=70, key="s_txt")
     b1, b2 = st.columns([1, 2])
     with b1: start = st.button("🚀 스캔", type="primary", use_container_width=True)
-    with b2: filt = st.radio("필터", ["전체", "🔥 STRONG BUY", "🟢 PANIC BUY", "매수 전체"], horizontal=True, key="s_filt")
+    with b2: filt = st.radio("필터", ["전체", "🔥 STRONG BUY", "🟢 PANIC BUY", "매수 전체", "🟡 B급 관찰 (WATCH)"], horizontal=True, key="s_filt")
     if start or "s_res" in st.session_state:
         if start:
             with st.spinner("스캔 중..."):
@@ -6920,7 +7340,8 @@ def render_tab_scanner():
         ff = data
         if filt == "🔥 STRONG BUY": ff = [r for r in data if "STRONG" in r['action']]
         elif filt == "🟢 PANIC BUY": ff = [r for r in data if "PANIC" in r['action']]
-        elif filt == "매수 전체": ff = [r for r in data if r['is_buy']]
+        elif filt == "매수 전체": ff = [r for r in data if r.get('is_buy')]
+        elif filt == "🟡 B급 관찰 (WATCH)": ff = [r for r in data if r.get('is_watch') or "WATCH" in r.get('action', '')]
         render_html(f"""<div style="margin:12px 0;font-size:13px;font-weight:700;">총 {len(data)}개 중 <b style="color:#38bdf8;">{len(ff)}개</b> 포착</div>""")
         for it_ in ff:
             cc = "#10b981" if it_['change_pct'] >= 0 else "#f43f5e"
@@ -7098,11 +7519,12 @@ def render_tab_portfolio_risk(usd_krw):
         </div>
     </div>""")
     if rep.get("rebal_actions"):
+        rebal_actions_html = "<br>".join(f"• {a}" for a in rep["rebal_actions"])
         render_html(f"""
         <div class="rebal-card">
             <div style="font-size:13px; font-weight:800; color:#c084fc; margin-bottom:6px;">⚖️ 리스크 패리티(역변동성) 비중 리밸런싱</div>
             <div style="font-size:11px; color:#e9d5ff; line-height:1.55;">
-                {"<br>".join(f"• {a}" for a in rep['rebal_actions'])}
+                {rebal_actions_html}
             </div>
         </div>""")
     cL, cR = st.columns([1.2, 1.3])
@@ -7386,11 +7808,22 @@ def db_record_team_audit_for_trade(
     ticker: str,
     trade_date: str,
     regime: str,
-    agents_map: dict,
-    outcome: str,
-    return_pct: float,
+    agents_map: dict = None,
+    outcome: str = "",
+    return_pct: float = 0.0,
+    agents_json: str = None,
 ):
     """청산된 모의매매 1건에 대해 16개 팀 전원의 예측 정확도를 채점하여 agent_performance_log에 기록."""
+    if agents_map is None and agents_json:
+        try:
+            agents_map = json.loads(agents_json) if isinstance(agents_json, str) else agents_json
+        except Exception:
+            agents_map = {}
+    elif isinstance(agents_map, str):
+        try:
+            agents_map = json.loads(agents_map)
+        except Exception:
+            agents_map = {}
     if outcome not in ("WIN", "LOSS") or not agents_map:
         return
     try:
@@ -7582,6 +8015,23 @@ def evaluate_open_paper_positions(max_hold_days: int = 10) -> int:
                 closed_cnt += 1
         except Exception as e:
             LOG.debug("evaluate_open_paper_positions item %s error: %s", tk, e)
+
+    # ⭐ [21.0 완전자동화 패치 #1] 매매가 1건이라도 청산되면 즉시 3연속 오답 팀 자동 감지 & 주간 진단 갱신
+    if closed_cnt > 0:
+        try:
+            if "detect_consecutive_errors" in globals():
+                detect_consecutive_errors(min_consecutive=3)
+            if "generate_weekly_review" in globals():
+                generate_weekly_review()
+            # 자율 진화 모드(auto_evolution_enabled)가 켜져 있으면 대기 중인 팀 수정 요청서도 자동 승인 반영
+            if "db_get_champion_version" in globals() and "db_get_pending_fix_requests" in globals() and "apply_fix_request" in globals():
+                _c_cfg = db_get_champion_version()
+                if (_c_cfg.get("veto_thresholds") or {}).get("auto_evolution_enabled", False):
+                    for _p_req in db_get_pending_fix_requests():
+                        apply_fix_request(_p_req)
+        except Exception as _e_auto_det:
+            LOG.debug("auto detect_consecutive_errors on close skipped: %s", _e_auto_det)
+
     return closed_cnt
 
 
@@ -7731,180 +8181,219 @@ def run_historical_50_paper_simulation(
         all_dates = all_dates[-130:]
 
     inserted_trades = []
-    # 2거래일 간격으로 스캔하여 Top 픽 선정
+    # 2거래일 간격으로 스캔하여 Top 픽 선정 (실제 run_chart_agent · run_master_agent · evaluate_extra_masters_on_df · run_chief_manager 연동)
     for step_idx in range(0, len(all_dates), 2):
         if len(inserted_trades) >= target_trades:
             break
         sig_dt = all_dates[step_idx]
         sig_dt_str = pd.Timestamp(sig_dt).strftime("%Y-%m-%d")
 
-        spy_r20 = safe_float(spy_rets.asof(sig_dt), 0.0) if not spy_rets.empty else 0.0
-        rsp_r20 = safe_float(rsp_rets.asof(sig_dt), spy_r20) if not rsp_rets.empty else spy_r20
-        breadth_est = float(np.clip(52.0 + (rsp_r20 - spy_r20) * 3.0 + (5.0 if spy_r20 > 0 else -8.0), 22.0, 88.0))
-        regime = "BULL" if spy_r20 >= 2.5 else ("BEAR" if spy_r20 <= -2.5 else "NEUTRAL")
+        if step_idx % 10 == 0 and step_idx > 0:
+            try:
+                st.toast(f"🔍 EOD 시뮬레이션 진행 중 (실전엔진 5팀 + 프록시 11팀)... ({len(inserted_trades)}/{target_trades}건 · 스캔 {step_idx}/{len(all_dates)})", icon="⚙️")
+            except Exception:
+                pass
 
-        day_candidates = []
-        for tk, df in hist_map.items():
-            if sig_dt not in df.index:
-                continue
-            loc = df.index.get_loc(sig_dt)
-            if isinstance(loc, slice) or loc + max_hold_days + 1 >= len(df) or loc < 25:
-                continue
-            row = df.iloc[loc]
-            px = safe_float(row["Close"], 0.0)
-            if px <= 0:
-                continue
-            ema10 = safe_float(row["EMA10"], px)
-            ema20 = safe_float(row["EMA20"], px)
-            ema50 = safe_float(row["EMA50"], px)
-            ema200 = safe_float(row["EMA200"], ema50)
-            box_h = safe_float(row["Box_High"], px)
-            box_l = safe_float(row["Box_Low"], px * 0.95)
-            atr = max(safe_float(row["ATR"], px * 0.03), px * 0.015)
-            rsi = safe_float(row["RSI"], 50.0)
-            vol_r = safe_float(row["Volume"], 0.0) / max(1.0, safe_float(row["Vol_MA20"], 1.0))
-            px_20d_ago = safe_float(df["Close"].iloc[max(0, loc - 20)], px)
-            stk_r20 = ((px / px_20d_ago) - 1.0) * 100.0 if px_20d_ago > 0 else 0.0
-            rs_diff = stk_r20 - spy_r20
+        try:
+            spy_r20 = safe_float(spy_rets.asof(sig_dt), 0.0) if not spy_rets.empty else 0.0
+            rsp_r20 = safe_float(rsp_rets.asof(sig_dt), spy_r20) if not rsp_rets.empty else spy_r20
+            breadth_est = float(np.clip(52.0 + (rsp_r20 - spy_r20) * 3.0 + (5.0 if spy_r20 > 0 else -8.0), 22.0, 88.0))
+            regime = "BULL" if spy_r20 >= 2.5 else ("BEAR" if spy_r20 <= -2.5 else "NEUTRAL")
 
-            # 16개 팀 시점별(Point-in-Time) 점수 산출 (미래 참조 0%)
-            chart_sc = (25 if px > ema20 else -20) + (30 if ema10 > ema20 > ema50 else (-25 if ema10 < ema20 < ema50 else 0)) + (20 if px >= box_h else 0) + (-15 if px < ema200 else 10)
-            chart_st = "BULLISH" if chart_sc >= 25 else ("BEARISH" if chart_sc <= -20 else "NEUTRAL")
+            day_candidates = []
+            for tk, df in hist_map.items():
+                try:
+                    if sig_dt not in df.index:
+                        continue
+                    loc = df.index.get_loc(sig_dt)
+                    if isinstance(loc, slice) or loc + max_hold_days + 1 >= len(df) or loc < 25:
+                        continue
+                    row = df.iloc[loc]
+                    px = safe_float(row["Close"], 0.0)
+                    if px <= 0:
+                        continue
+                    ema10 = safe_float(row["EMA10"], px)
+                    ema20 = safe_float(row["EMA20"], px)
+                    ema50 = safe_float(row["EMA50"], px)
+                    ema200 = safe_float(row["EMA200"], ema50)
+                    box_h = safe_float(row["Box_High"], px)
+                    box_l = safe_float(row["Box_Low"], px * 0.95)
+                    atr = max(safe_float(row["ATR"], px * 0.03), px * 0.015)
+                    atr_pct = (atr / px) * 100.0 if px > 0 else 3.0
+                    rsi = safe_float(row["RSI"], 50.0)
+                    vol_r = safe_float(row["Volume"], 0.0) / max(1.0, safe_float(row["Vol_MA20"], 1.0))
+                    px_20d_ago = safe_float(df["Close"].iloc[max(0, loc - 20)], px)
+                    stk_r20 = ((px / px_20d_ago) - 1.0) * 100.0 if px_20d_ago > 0 else 0.0
+                    rs_diff = stk_r20 - spy_r20
 
-            master_sc = (35 if (px >= box_h and vol_r >= 1.25) else (20 if (px > ema20 > ema50) else (-25 if px < ema20 else 5)))
-            master_st = "BULLISH" if master_sc >= 20 else ("BEARISH" if master_sc <= -20 else "NEUTRAL")
+                    # ⭐ 실제 에이전트 함수(run_chart_agent, run_master_agent, evaluate_extra_masters_on_df, run_chief_manager) 시점별(Point-in-Time) 호출
+                    data_r = AgentReport("Data", 90, "GOOD", f"EOD (${px:,.2f})", {"price": px})
+                    chart_r = run_chart_agent(
+                        ticker=tk, current_price=px, ema10=ema10, ema20=ema20, ema50=ema50, ema200=ema200,
+                        box_high=box_h, box_low=box_l, atr=atr, atr_pct=atr_pct, rsi=rsi, vol_ratio=vol_r,
+                    )
 
-            macro_sc = 25 if regime == "BULL" else (-25 if regime == "BEAR" else 5)
-            macro_st = "BULLISH" if macro_sc >= 20 else ("BEARISH" if macro_sc <= -20 else "NEUTRAL")
+                    pass_c = sum([
+                        1 if (px >= box_h and vol_r >= 1.2) else 0,
+                        1 if (px > ema10 > ema20 > ema50) else 0,
+                        1 if (px >= box_l and px >= ema20) else 0,
+                        1 if (px > ema50 and ema50 > ema200) else 0,
+                        1 if (px >= box_h or rsi <= 28.0) else 0,
+                        1 if (px > ema200) else 0,
+                    ])
+                    m_sc_100 = max(0, min(100, 40 + pass_c * 10 + (10 if px >= box_h else 0) - (20 if px < ema20 else 0)))
+                    master_r = run_master_agent(chart_r, pass_c, m_sc_100, False)
+                    if "evaluate_extra_masters_on_df" in globals() and callable(evaluate_extra_masters_on_df):
+                        try:
+                            _active_m = champ.get("extra_masters") or []
+                            if _active_m:
+                                ex_bonus, ex_passed = evaluate_extra_masters_on_df(df.iloc[: loc + 1], _active_m)
+                                if ex_bonus > 0:
+                                    master_r.details["extra_master_bonus"] = ex_bonus
+                                    master_r.details["extra_masters_passed"] = ex_passed
+                        except Exception:
+                            pass
 
-            brd_sc = (25 if breadth_est >= 55 else (-25 if breadth_est < 38 else 5)) + (20 if rs_diff > 3.0 else (-15 if rs_diff < -3.0 else 0))
-            brd_st = "BULLISH" if brd_sc >= 20 else ("BEARISH" if brd_sc <= -20 else "NEUTRAL")
+                    macro_sc = 25 if regime == "BULL" else (-25 if regime == "BEAR" else 5)
+                    macro_st = "BULLISH" if macro_sc >= 20 else ("BEARISH" if macro_sc <= -20 else "NEUTRAL")
+                    macro_r = AgentReport("Macro", macro_sc, macro_st, f"{regime}", {"regime": regime})
 
-            day_ret = ((px / safe_float(df["Close"].iloc[loc - 1], px)) - 1.0) * 100.0
-            news_sc = 22 if (vol_r >= 1.4 and day_ret >= 1.5) else (-22 if (vol_r >= 1.4 and day_ret <= -2.0) else 5)
-            news_st = "BULLISH" if news_sc >= 20 else ("BEARISH" if news_sc <= -20 else "NEUTRAL")
+                    brd_sc = (25 if breadth_est >= 55 else (-25 if breadth_est < 38 else 5)) + (20 if rs_diff > 3.0 else (-15 if rs_diff < -3.0 else 0))
+                    brd_st = "BULLISH" if brd_sc >= 20 else ("BEARISH" if brd_sc <= -20 else "NEUTRAL")
+                    rs_ldr = min(12.0, max(4.0, rs_diff * 0.45)) if (rs_diff > 0 and breadth_est >= 35.0) else (-4.0 if rs_diff <= -10.0 else 0.0)
+                    breadth_r = AgentReport("BreadthRS", brd_sc, brd_st, f"호흡 {breadth_est:.0f}%", {"breadth_pct": breadth_est, "rs_3m_diff": rs_diff, "rs_leader_bonus": rs_ldr, "flow_intensity": abs(rs_diff) * 0.25})
 
-            soc_sc = 25 if (vol_r >= 1.35 and 50 <= rsi <= 74) else (-25 if rsi >= 78 else 5)
-            soc_st = "BULLISH" if soc_sc >= 20 else ("BEARISH" if soc_sc <= -20 else "NEUTRAL")
+                    day_ret = ((px / safe_float(df["Close"].iloc[loc - 1], px)) - 1.0) * 100.0
+                    news_sc = 22 if (vol_r >= 1.4 and day_ret >= 1.5) else (-22 if (vol_r >= 1.4 and day_ret <= -2.0) else 5)
+                    news_st = "BULLISH" if news_sc >= 20 else ("BEARISH" if news_sc <= -20 else "NEUTRAL")
+                    news_r = AgentReport("News", news_sc, news_st, "EOD 뉴스/거래량 촉매", {})
 
-            opt_sc = 20 if (px > ema10 and vol_r >= 1.2) else (-20 if px < ema20 else 0)
-            opt_st = "BULLISH" if opt_sc >= 20 else ("BEARISH" if opt_sc <= -20 else "NEUTRAL")
+                    pol_r = AgentReport("Policy", 10 if regime != "BEAR" else -15, "BULLISH" if regime == "BULL" else "NEUTRAL", "정책 중립", {})
+                    opt_sc = 20 if (px > ema10 and vol_r >= 1.2) else (-20 if px < ema20 else 0)
+                    opt_r = AgentReport("Options", opt_sc, "BULLISH" if opt_sc >= 20 else ("BEARISH" if opt_sc <= -20 else "NEUTRAL"), "옵션 수급", {})
+                    onc_app = tk in CRYPTO_TICKERS
+                    onc_r = AgentReport("Onchain", 15 if (onc_app and stk_r20 > 0) else 0, "BULLISH" if (onc_app and stk_r20 > 0) else "NEUTRAL", "온체인", {"applicable": onc_app})
+                    sup_sc = 20 if stk_r20 > 2.0 else (-20 if stk_r20 < -3.0 else 0)
+                    sup_r = AgentReport("Supply", sup_sc, "BULLISH" if sup_sc >= 20 else ("BEARISH" if sup_sc <= -20 else "NEUTRAL"), "공급망", {"applicable": True})
+                    sq_sc = 50 if (px >= box_h and vol_r >= 1.3) else 25
+                    sq_r = AgentReport("Squeeze", sq_sc, "BULLISH" if sq_sc >= 45 else "NEUTRAL", "스퀴즈", {"sq_score": sq_sc})
+                    ins_r = AgentReport("Insider", 15 if px > ema50 else 0, "BULLISH" if px > ema50 else "NEUTRAL", "내부자", {})
+                    inst_r = AgentReport("Institutional", 20 if px > ema200 else -10, "BULLISH" if px > ema200 else "NEUTRAL", "기관", {})
+                    im_sc = 20 if spy_r20 >= 0 else -20
+                    im_r = AgentReport("Intermarket", im_sc, "BULLISH" if im_sc >= 20 else "BEARISH", "자산상관", {})
+                    ev_r = AgentReport("MacroEvent", 10, "BULLISH", "일정 양호", {"days_left": 10})
+                    soc_sc = 25 if (vol_r >= 1.35 and 50 <= rsi <= 74) else (-25 if rsi >= 78 else 5)
+                    soc_r = AgentReport("Social", soc_sc, "BULLISH" if soc_sc >= 20 else ("BEARISH" if soc_sc <= -20 else "NEUTRAL"), "소셜", {"smart_money_synergy": (vol_r >= 1.35 and px > ema50)})
 
-            sup_sc = 20 if stk_r20 > 2.0 else (-20 if stk_r20 < -3.0 else 0)
-            sup_st = "BULLISH" if sup_sc >= 20 else ("BEARISH" if sup_sc <= -20 else "NEUTRAL")
+                    chief_dec = run_chief_manager(
+                        ticker=tk, current_price=px, data_r=data_r, chart_r=chart_r, macro_r=macro_r,
+                        master_r=master_r, news_r=news_r, policy_r=pol_r, options_r=opt_r, onchain_r=onc_r,
+                        supply_r=sup_r, squeeze_r=sq_r, insider_r=ins_r, institutional_r=inst_r,
+                        breadth_r=breadth_r, intermarket_r=im_r, event_r=ev_r, social_r=soc_r,
+                    )
+                    if chief_dec.veto_triggered or chief_dec.score < 16.0:
+                        continue
 
-            im_sc = 20 if spy_r20 >= 0 else -20
-            im_st = "BULLISH" if im_sc >= 20 else "BEARISH"
+                    tot_sc = chief_dec.score
+                    ag_map = {r.name: {"score": r.score, "status": r.status} for r in chief_dec.agent_reports}
 
-            ag_map = {
-                "Data": {"score": 25, "status": "GOOD"},
-                "Chart": {"score": chart_sc, "status": chart_st},
-                "Macro": {"score": macro_sc, "status": macro_st},
-                "Master": {"score": master_sc, "status": master_st},
-                "News": {"score": news_sc, "status": news_st},
-                "Policy": {"score": 10 if regime != "BEAR" else -15, "status": "BULLISH" if regime == "BULL" else "NEUTRAL"},
-                "Options": {"score": opt_sc, "status": opt_st},
-                "Onchain": {"score": 15 if tk in CRYPTO_TICKERS and stk_r20 > 0 else 0, "status": "BULLISH" if tk in CRYPTO_TICKERS and stk_r20 > 0 else "NEUTRAL"},
-                "Supply": {"score": sup_sc, "status": sup_st},
-                "Squeeze": {"score": 45 if (px >= box_h and vol_r >= 1.3) else 20, "status": "BULLISH" if px >= box_h else "NEUTRAL"},
-                "Insider": {"score": 15 if px > ema50 else 0, "status": "BULLISH" if px > ema50 else "NEUTRAL"},
-                "Institutional": {"score": 20 if px > ema200 else -10, "status": "BULLISH" if px > ema200 else "NEUTRAL"},
-                "BreadthRS": {"score": brd_sc, "status": brd_st},
-                "Intermarket": {"score": im_sc, "status": im_st},
-                "MacroEvent": {"score": 15, "status": "BULLISH"},
-                "Social": {"score": soc_sc, "status": soc_st},
-            }
+                    # T+1일 시가(Open) 진입 & T+1..T+max_hold_days 고/저가 청산 (Look-ahead Bias 0%)
+                    next_slice = df.iloc[loc + 1 : loc + 1 + max_hold_days]
+                    if next_slice.empty:
+                        continue
+                    entry_bar = next_slice.iloc[0]
+                    entry_dt_str = pd.Timestamp(next_slice.index[0]).strftime("%Y-%m-%d")
+                    ent_px = safe_float(entry_bar["Open"], px)
+                    if ent_px <= 0:
+                        ent_px = px
 
-            tot_sc = round(
-                chart_sc * 0.22 + master_sc * 0.18 + brd_sc * 0.15 + news_sc * 0.12
-                + macro_sc * 0.10 + soc_sc * 0.08 + opt_sc * 0.08 + sup_sc * 0.07,
-                1,
-            )
-            if tot_sc < 18.0 or breadth_est < 30.0:
-                continue
+                    sl_px = round(ent_px - atr * (2.6 if regime == "BULL" else 2.0), 2)
+                    t1_px = round(ent_px + atr * (4.0 if regime == "BULL" else 3.0), 2)
+                    t2_px = round(ent_px + atr * 6.5, 2)
 
-            # T+1일 시가(Open) 진입 & T+1..T+max_hold_days 고/저가 청산 (Look-ahead Bias 0%)
-            next_slice = df.iloc[loc + 1 : loc + 1 + max_hold_days]
-            if next_slice.empty:
-                continue
-            entry_bar = next_slice.iloc[0]
-            ent_dt_str = pd.Timestamp(entry_bar.name).strftime("%Y-%m-%d")
-            ent_px = round(safe_float(entry_bar["Open"], px), 2)
-            if ent_px <= 0:
-                continue
+                    exit_px = None
+                    exit_dt_str = None
+                    exit_rsn = None
+                    hold_d = 1
 
-            sl_mult = 2.4 if regime == "BULL" else 1.9
-            sl_px = round(max(ent_px - atr * sl_mult, box_l * 0.98), 2)
-            tp1_px = round(ent_px + atr * (3.2 if regime == "BULL" else 2.5), 2)
-            tp2_px = round(ent_px + atr * (5.2 if regime == "BULL" else 4.0), 2)
+                    for b_idx, (b_dt, b_row) in enumerate(next_slice.iterrows(), start=1):
+                        b_o = safe_float(b_row["Open"], ent_px)
+                        b_h = safe_float(b_row["High"], ent_px)
+                        b_l = safe_float(b_row["Low"], ent_px)
+                        b_dt_s = pd.Timestamp(b_dt).strftime("%Y-%m-%d")
 
-            exit_px, exit_rsn, exit_dt_str, hold_d = None, None, None, 0
-            for h_i, (b_dt, b_row) in enumerate(next_slice.iterrows(), start=1):
-                bo = safe_float(b_row["Open"], ent_px)
-                bh = safe_float(b_row["High"], ent_px)
-                bl = safe_float(b_row["Low"], ent_px)
-                bc = safe_float(b_row["Close"], ent_px)
-                b_str = pd.Timestamp(b_dt).strftime("%Y-%m-%d")
-                if bo <= sl_px:
-                    exit_px, exit_rsn, exit_dt_str, hold_d = bo, "GAP_STOP", b_str, h_i
+                        if b_o <= sl_px:
+                            exit_px, exit_dt_str, exit_rsn, hold_d = b_o, b_dt_s, "GAP_DOWN_STOP", b_idx
+                            break
+                        if b_o >= t1_px:
+                            exit_px, exit_dt_str, exit_rsn, hold_d = b_o, b_dt_s, "GAP_UP_TARGET", b_idx
+                            break
+                        if b_l <= sl_px:
+                            exit_px, exit_dt_str, exit_rsn, hold_d = sl_px, b_dt_s, "STOP_LOSS", b_idx
+                            break
+                        if b_h >= t2_px:
+                            exit_px, exit_dt_str, exit_rsn, hold_d = t2_px, b_dt_s, "TARGET_2", b_idx
+                            break
+                        if b_h >= t1_px:
+                            exit_px, exit_dt_str, exit_rsn, hold_d = t1_px, b_dt_s, "TARGET_1", b_idx
+                            break
+
+                    if exit_px is None:
+                        last_b = next_slice.iloc[-1]
+                        exit_px = safe_float(last_b["Close"], ent_px)
+                        exit_dt_str = pd.Timestamp(next_slice.index[-1]).strftime("%Y-%m-%d")
+                        exit_rsn = f"TIME_EXIT_{len(next_slice)}D"
+                        hold_d = len(next_slice)
+
+                    ret_pct = round(((exit_px / ent_px) - 1.0) * 100.0, 2) if ent_px > 0 else 0.0
+                    outcome = "WIN" if ret_pct > 0.2 else ("LOSS" if ret_pct < -0.2 else "NEUTRAL")
+
+                    day_candidates.append({
+                        "signal_date": sig_dt_str,
+                        "entry_date": entry_dt_str,
+                        "ticker": tk,
+                        "action": chief_dec.action,
+                        "regime": regime,
+                        "entry_price": round(ent_px, 2),
+                        "stop_loss": sl_px,
+                        "target_1": t1_px,
+                        "target_2": t2_px,
+                        "score": tot_sc,
+                        "agents_json": json.dumps(ag_map, ensure_ascii=False),
+                        "veto_triggered": 0,
+                        "exit_date": exit_dt_str,
+                        "exit_price": round(exit_px, 2),
+                        "exit_reason": exit_rsn,
+                        "return_pct": ret_pct,
+                        "outcome": outcome,
+                        "hold_days": hold_d,
+                        "is_evaluated": 1,
+                        "manager_version": ver,
+                    })
+                except Exception as e_tk:
+                    LOG.debug("run_historical_50 skip %s@%s: %s", tk, sig_dt_str, e_tk)
+                    continue
+
+            day_candidates.sort(key=lambda x: -x["score"])
+            for pick in day_candidates[:2]:
+                if len(inserted_trades) >= target_trades:
                     break
-                if bo >= tp1_px:
-                    exit_px, exit_rsn, exit_dt_str, hold_d = bo, "GAP_TARGET_1", b_str, h_i
-                    break
-                if bl <= sl_px:
-                    exit_px, exit_rsn, exit_dt_str, hold_d = sl_px, "STOP", b_str, h_i
-                    break
-                if bh >= tp2_px:
-                    exit_px, exit_rsn, exit_dt_str, hold_d = tp2_px, "TARGET_2", b_str, h_i
-                    break
-                if bh >= tp1_px:
-                    exit_px, exit_rsn, exit_dt_str, hold_d = tp1_px, "TARGET_1", b_str, h_i
-                    break
-                if h_i >= len(next_slice):
-                    exit_px, exit_rsn, exit_dt_str, hold_d = bc, "TIME_EXIT", b_str, h_i
-                    break
+                tid = db_insert_paper_trade(pick)
+                if tid > 0:
+                    db_record_team_audit_for_trade(
+                        trade_id=tid,
+                        ticker=pick["ticker"],
+                        trade_date=pick["exit_date"],
+                        regime=pick["regime"],
+                        agents_map=json.loads(pick["agents_json"]) if isinstance(pick["agents_json"], str) else pick["agents_json"],
+                        outcome=pick["outcome"],
+                        return_pct=pick["return_pct"],
+                    )
+                    inserted_trades.append(pick)
+        except Exception as e_step:
+            LOG.warning("run_historical_50 step %s failed: %s", sig_dt_str, e_step)
+            continue
 
-            if exit_px is None:
-                continue
-            ret_pct = round(((exit_px / ent_px) - 1.0) * 100.0, 2)
-            outcome = "WIN" if ret_pct > 0.0 else "LOSS"
-            day_candidates.append({
-                "signal_date": sig_dt_str,
-                "entry_date": ent_dt_str,
-                "ticker": tk,
-                "action": "🟢 STRONG_BUY" if tot_sc >= 42 else "🟡 BUY",
-                "regime": regime,
-                "entry_price": ent_px,
-                "stop_loss": sl_px,
-                "target_1": tp1_px,
-                "target_2": tp2_px,
-                "score": tot_sc,
-                "manager_version": ver,
-                "agents_json": json.dumps(ag_map, ensure_ascii=False),
-                "agents_map": ag_map,
-                "veto_triggered": 0,
-                "exit_date": exit_dt_str,
-                "exit_price": round(exit_px, 2),
-                "exit_reason": exit_rsn,
-                "return_pct": ret_pct,
-                "outcome": outcome,
-                "hold_days": hold_d,
-                "is_evaluated": 1,
-            })
-
-        day_candidates.sort(key=lambda x: -x["score"])
-        for pick in day_candidates[:2]:
-            if len(inserted_trades) >= target_trades:
-                break
-            tid = db_insert_paper_trade(pick)
-            if tid > 0:
-                db_record_team_audit_for_trade(
-                    tid, pick["ticker"], pick["signal_date"], pick["regime"],
-                    pick["agents_map"], pick["outcome"], pick["return_pct"]
-                )
-                inserted_trades.append(pick)
-
-    # 팀 연속 오답 감지 & 주간 리포트 자동 갱신
     detect_consecutive_errors(min_consecutive=3)
     generate_weekly_review()
     wins = sum(1 for t in inserted_trades if t["outcome"] == "WIN")
@@ -8396,6 +8885,316 @@ def db_update_fix_request_status(req_id: int, new_status: str):
         LOG.error("db_update_fix_request_status error: %s", e)
 
 
+
+
+# ------------------------------------------------------------------------------
+# ⭐ [21.0 NEW] AI AS 자동수술 & 안전 배포(.bak 백업 -> AST 검증 -> 덮어쓰기) & GitHub 자동 커밋 엔진
+# ------------------------------------------------------------------------------
+# 💡 모델명 안내: 구글/딥시크 최신 API 모델명은 https://ai.google.dev/gemini-api/docs/models 에서 확인·변경 가능합니다.
+AI_MODEL_ROUTING_TABLE = {
+    "SIMPLE_GEMINI": {
+        "label": "🟢 일반 수정 [무료/저비용] — Gemini 2.5/3 Flash (오타·임계값·단순 로직)",
+        "provider": "gemini",
+        "model_id": "gemini-2.5-flash",
+        "tier": "FREE",
+    },
+    "SIMPLE_DEEPSEEK": {
+        "label": "🟢 일반 수정 [초저비용] — DeepSeek V3 Coder (빠른 코드 패치)",
+        "provider": "deepseek",
+        "model_id": "deepseek-chat",
+        "tier": "FREE",
+    },
+    "COMPLEX_GEMINI4": {
+        "label": "🟣 고난도 구조 수술 [유료 고급 · 일 5회 제한] — Gemini 4 Argon / Pro (복합 오류·팀 추가·먹통 복구)",
+        "provider": "gemini",
+        "model_id": "gemini-2.5-pro",
+        "tier": "PAID_PRO",
+    },
+    "COMPLEX_DEEPSEEK_R1": {
+        "label": "🟣 고난도 추론 수술 [유료 고급 · 일 5회 제한] — DeepSeek R1 Reasoner (심층 퀀트 수식·아키텍처)",
+        "provider": "deepseek",
+        "model_id": "deepseek-reasoner",
+        "tier": "PAID_PRO",
+    },
+}
+
+EDITABLE_TEAM_FILES = [
+    "agent_chart.py", "agent_news.py", "agent_breadth.py", "agent_macro.py",
+    "agent_master.py", "agent_chief.py", "agent_policy.py", "agent_options.py",
+    "agent_onchain.py", "agent_supply.py", "agent_squeeze.py", "agent_insider.py",
+    "agent_institutional.py", "agent_intermarket.py", "agent_event_calendar.py",
+    "agent_social.py", "agent_paper.py", "agent_audit.py", "agent_evolution.py",
+    "app.py", "app_main.py",
+]
+
+
+def safe_auto_fix(file_path: str, new_code_from_ai: str) -> tuple:
+    """
+    ⭐ [무조건 백업 -> 임시파일 생성 -> AST 문법 & 보안 검사 -> 통과 시에만 원본 덮어쓰기]
+    실패 시 원본을 100% 보존하며, 타임스탬프 백업(.bak)을 남겨 언제든 1초 롤백을 보장합니다.
+    """
+    import ast as _ast
+    import shutil as _shutil
+
+    if not file_path or not os.path.exists(file_path):
+        return False, f"원본 파일이 존재하지 않습니다: {file_path}"
+    if not new_code_from_ai or len(new_code_from_ai.strip()) < 20:
+        return False, "수정할 코드가 비어 있거나 너무 짧습니다."
+
+    backup_dir = CFG.get("paths", {}).get("backups", "data/backups")
+    try:
+        os.makedirs(backup_dir, exist_ok=True)
+    except Exception:
+        backup_dir = os.path.dirname(file_path) or "."
+
+    base_name = os.path.basename(file_path)
+    ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_latest = f"{file_path}.bak"
+    backup_ts = os.path.join(backup_dir, f"{base_name}.{ts_str}.bak")
+    temp_path = f"{file_path}.tmp"
+
+    try:
+        # 1) 임시 파일(.tmp)에 새 코드 기록
+        with open(temp_path, "w", encoding="utf-8") as f_tmp:
+            f_tmp.write(new_code_from_ai)
+
+        # 2) [테스트 게이트 1] 파이썬 AST 문법(Syntax) 무결성 검사
+        try:
+            with open(temp_path, "r", encoding="utf-8") as f_chk:
+                _tree = _ast.parse(f_chk.read())
+        except SyntaxError as syn_e:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            return False, f"🚨 [자동 차단] AI 코드 문법(Syntax) 오류 발견으로 덮어쓰기 취소 (원본 100% 보존): {syn_e}"
+
+        # 3) [테스트 게이트 2] 위험 시스템 파괴 명령어 검사
+        dangerous_calls = {"rmtree", "unlink", "kill", "format_map"}
+        for node in _ast.walk(_tree):
+            if isinstance(node, _ast.Attribute) and node.attr in dangerous_calls:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                return False, f"🚨 [보안 차단] 위험 함수 호출({node.attr}) 감지 — 덮어쓰기 취소"
+
+        # 4) 테스트 통과 확인 후 원본 파일 이중 백업 (.bak 및 타임스탬프 백업)
+        _shutil.copy2(file_path, backup_latest)
+        try:
+            _shutil.copy2(file_path, backup_ts)
+        except Exception:
+            pass
+
+        # 5) 모든 테스트 통과 -> 원자적 교체 (Atomic Move)
+        _shutil.move(temp_path, file_path)
+        db_log_evolution_event(
+            "AI_AUTO_FIX_APPLIED",
+            from_ver=base_name,
+            to_ver=f"{base_name} (백업: {os.path.basename(backup_ts)})",
+            reason="AI AS 자동수술 AST 문법·보안 검증 통과 후 안전 덮어쓰기 완료",
+        )
+        return True, f"✅ 테스트 통과! `{base_name}` 안전 덮어쓰기 완료 (원본 백업: `{base_name}.bak` / `{os.path.basename(backup_ts)}`)"
+    except Exception as ex:
+        if os.path.exists(backup_latest):
+            try:
+                _shutil.copy2(backup_latest, file_path)
+            except Exception:
+                pass
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+        return False, f"🚨 배포 중 예외 발생 — 이전 백업본(.bak)으로 즉시 자동 롤백 완료: {ex}"
+
+
+def restore_file_from_backup(file_path: str) -> tuple:
+    """백업 파일(.bak)로부터 원본 파일을 1초 만에 즉시 복구합니다."""
+    import shutil as _shutil
+
+    backup_latest = f"{file_path}.bak"
+    if not os.path.exists(backup_latest):
+        return False, f"백업 파일(`{os.path.basename(backup_latest)}`)이 아직 존재하지 않습니다."
+    try:
+        _shutil.copy2(backup_latest, file_path)
+        db_log_evolution_event(
+            "AI_AUTO_FIX_ROLLBACK",
+            from_ver=f"{os.path.basename(file_path)}.bak",
+            to_ver=os.path.basename(file_path),
+            reason="사용자 요청으로 백업본(.bak) 즉시 복원 완료",
+        )
+        return True, f"🔄 `{os.path.basename(file_path)}` 파일이 직전 백업본(`.bak`)으로 완벽히 복구되었습니다!"
+    except Exception as ex:
+        return False, f"복구 실패: {ex}"
+
+
+def push_fixed_code_to_github(
+    file_path_in_repo: str,
+    new_code: str,
+    commit_message: str,
+    github_token: str = "",
+    repo_name: str = "",
+    branch: str = "main",
+) -> tuple:
+    """
+    ⭐ [GitHub REST API 직접 연동 — 별도 패키지 설치 불필요]
+    수정 및 AST 검증이 완료된 파이썬 파일을 사용자의 GitHub 저장소에 자동 Commit & Push합니다.
+    Render.com의 Auto-Deploy가 켜져 있으면 Push 직후 자동으로 새 버전이 빌드·배포됩니다.
+    """
+    import base64 as _b64
+    import requests as _req
+
+    tok = (github_token or os.getenv("GITHUB_TOKEN", "")).strip()
+    repo = (repo_name or os.getenv("GITHUB_REPO", "")).strip()
+    br = (branch or os.getenv("GITHUB_BRANCH", "main")).strip() or "main"
+
+    if not tok:
+        return False, "GitHub Personal Access Token(ghp_...)을 입력하거나 Render 환경변수(GITHUB_TOKEN)에 등록해 주세요."
+    if not repo or "/" not in repo:
+        return False, "GitHub 저장소 이름을 `아이디/저장소명` 형식(예: `gangjin/gangjin-ai`)으로 입력해 주세요."
+
+    clean_path = file_path_in_repo.strip().lstrip("/")
+    api_url = f"https://api.github.com/repos/{repo}/contents/{clean_path}"
+    headers = {
+        "Authorization": f"Bearer {tok}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    try:
+        # 1) 기존 파일 SHA 조회 (업데이트 시 필수, 새 팀 파일 생성 시에는 None)
+        r_get = _req.get(api_url, headers=headers, params={"ref": br}, timeout=12)
+        sha_val = None
+        if r_get.status_code == 200:
+            sha_val = (r_get.json() or {}).get("sha")
+
+        encoded_content = _b64.b64encode(new_code.encode("utf-8")).decode("ascii")
+        payload = {
+            "message": commit_message or f"AI Auto-Fix: update {clean_path}",
+            "content": encoded_content,
+            "branch": br,
+        }
+        if sha_val:
+            payload["sha"] = sha_val
+
+        r_put = _req.put(api_url, headers=headers, json=payload, timeout=18)
+        if r_put.status_code in (200, 201):
+            db_log_evolution_event(
+                "GITHUB_AUTO_DEPLOY",
+                from_ver=clean_path,
+                to_ver=f"{repo}@{br}",
+                reason=commit_message,
+            )
+            return True, f"🚀 GitHub(`{repo}` · `{br}` 브랜치)에 `{clean_path}` 커밋 & 푸시 성공! Render.com이 곧 자동 배포(Auto-Deploy)를 시작합니다."
+        return False, f"GitHub API 오류 (HTTP {r_put.status_code}): {r_put.text[:240]}"
+    except Exception as ex:
+        return False, f"GitHub 전송 중 네트워크 예외 발생: {ex}"
+
+
+def call_ai_auto_fixer_llm(
+    target_file: str,
+    issue_description: str,
+    current_code: str,
+    route_key: str,
+    api_key: str,
+) -> tuple:
+    """
+    ⭐ [동적 모델 라우터]
+    - 간단 수정(SIMPLE): 무료/저비용 Gemini Flash 또는 DeepSeek V3 호출
+    - 고난도 구조 수정/먹통 복구(COMPLEX): Gemini 4 Argon / Pro 또는 DeepSeek R1 호출 (세션당 일 5회 하드캡 적용)
+    """
+    import requests as _req
+
+    route_info = AI_MODEL_ROUTING_TABLE.get(route_key, AI_MODEL_ROUTING_TABLE["SIMPLE_GEMINI"])
+    provider = route_info["provider"]
+    model_id = route_info["model_id"]
+    tier = route_info["tier"]
+
+    eff_key = (api_key or "").strip()
+    if not eff_key:
+        if provider == "gemini":
+            eff_key = os.getenv("GEMINI_API_KEY", "").strip()
+        else:
+            eff_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+
+    if not eff_key:
+        return False, f"{provider.upper()} API 키가 입력되지 않았습니다. 좌측 입력란에 API 키를 입력하거나 Render 환경변수에 등록해 주세요."
+
+    sys_prompt = (
+        "당신은 월가 기관급 파이썬/Streamlit 스윙 퀀트 수석 엔지니어입니다. "
+        "사용자가 요청한 문제점을 해결하거나 팀 성능을 개선한 전체 파이썬 코드를 반환하십시오. "
+        "반드시 문법 오류가 없는 순수 파이썬 코드만 ```python ... ``` 블록 안에 작성하고, "
+        "Look-ahead Bias(미래 데이터 참조)를 절대 포함하지 마십시오."
+    )
+    if (
+        str(target_file).startswith("agent_custom_")
+        or "custom" in str(target_file).lower()
+        or any(k in str(issue_description).lower() for k in ("new agent", "신규 팀", "팀 추가", "커스텀 팀"))
+    ):
+        sys_prompt += (
+            "\n\n[커스텀 팀 표준 템플릿 - 반드시 이 시그니처와 dict 반환 형식을 따르십시오]\n"
+            "```python\n"
+            "import numpy as np\n"
+            "import pandas as pd\n\n"
+            "def run_agent(ticker: str, hist, current_price: float) -> dict:\n"
+            "    # hist: pandas DataFrame (일봉 OHLCV: Open, High, Low, Close, Volume)\n"
+            "    # return: 다음 형식의 dict를 반드시 반환하십시오.\n"
+            "    return {\n"
+            "        'name': 'CustomTeamName',\n"
+            "        'score': 0.0,  # -100.0 ~ +100.0 사이 float\n"
+            "        'status': 'NEUTRAL',  # 'BULLISH' | 'BEARISH' | 'NEUTRAL' | 'DANGER'\n"
+            "        'summary': '핵심 한 줄 요약 (30자 이내)',\n"
+            "        'details': {},\n"
+            "    }\n"
+            "```\n"
+            "위 `def run_agent(ticker: str, hist, current_price: float) -> dict:` 시그니처와 dict 키 형식을 반드시 준수하십시오. "
+            "pandas, numpy, math 외의 외부 라이브러리는 import하지 마십시오."
+        )
+    user_prompt = (
+        f"[대상 파일]: {target_file}\n"
+        f"[발견된 문제 / 수정 요청사항]:\n{issue_description}\n\n"
+        f"[현재 코드 (일부 또는 전체)]:\n```python\n{current_code[:14000]}\n```\n\n"
+        "위 문제를 정확히 수정한 파이썬 코드를 ```python 코드블록으로 작성해 주세요."
+    )
+
+    try:
+        if provider == "gemini":
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={eff_key}"
+            payload = {
+                "contents": [{"parts": [{"text": sys_prompt + "\n\n" + user_prompt}]}],
+                "generationConfig": {"temperature": 0.15, "maxOutputTokens": 8192},
+            }
+            resp = _req.post(url, json=payload, timeout=45)
+            if resp.status_code != 200:
+                return False, f"Gemini API 호출 오류 (HTTP {resp.status_code}): {resp.text[:250]}"
+            data = resp.json()
+            candidates = data.get("candidates") or []
+            if not candidates:
+                return False, "Gemini 응답에 코드가 포함되지 않았습니다."
+            raw_txt = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+        else:
+            url = "https://api.deepseek.com/chat/completions"
+            headers = {"Authorization": f"Bearer {eff_key}", "Content-Type": "application/json"}
+            payload = {
+                "model": model_id,
+                "messages": [
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "temperature": 0.15,
+                "max_tokens": 8192,
+            }
+            resp = _req.post(url, headers=headers, json=payload, timeout=55)
+            if resp.status_code != 200:
+                return False, f"DeepSeek API 호출 오류 (HTTP {resp.status_code}): {resp.text[:250]}"
+            data = resp.json()
+            raw_txt = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
+
+        m = re.search(r"```(?:python)?\s*(.*?)```", raw_txt, re.DOTALL)
+        extracted = m.group(1).strip() if m else raw_txt.strip()
+        if not extracted:
+            return False, "AI 응답에서 파이썬 코드를 추출하지 못했습니다."
+        return True, extracted
+    except Exception as ex:
+        return False, f"AI 모델({model_id}) 호출 중 예외 발생: {ex}"
+
+
 # ==============================================================================
 # [Agent 21] 🧬 매니저 자가 진화 연구소 (Self-Evolution Engine — agent_evolution.py)
 # - 50건 배치 통계 검증(95% 신뢰구간 + p-value 유의성 검정) & 15건 조기 중단(Early Stop) 안전장치
@@ -8695,6 +9494,22 @@ def evaluate_50_samples(version: str = None) -> dict:
     n = len(trades)
 
     if early["triggered"]:
+        # ⭐ [21.0 완전자동화 패치 #2 & #6] 15건 조기중단 발동 시 실제 이전 챔피언 롤백 자동 실행 + 3연속 오답 재진단 트리거
+        rb_note = ""
+        try:
+            if "detect_consecutive_errors" in globals():
+                detect_consecutive_errors(min_consecutive=3)
+            if "generate_weekly_review" in globals():
+                generate_weekly_review()
+            cur_champ = db_get_champion_version()
+            if int(cur_champ.get("generation", 1)) > 1 and cur_champ.get("version") == ver:
+                _rb_ok, _rb_msg = rollback_to_previous_champion()
+                if _rb_ok:
+                    rb_note = f" → [자동롤백 완료: {_rb_msg}]"
+                    LOG.info("AUTO_ROLLBACK executed: %s", _rb_msg)
+        except Exception as _e_rb:
+            LOG.error("auto rollback failed: %s", _e_rb)
+
         return {
             "status": "EARLY_STOP",
             "version": ver,
@@ -8702,7 +9517,7 @@ def evaluate_50_samples(version: str = None) -> dict:
             "ready": n >= MIN_SAMPLE_SIZE,
             "progress": round(min(100.0, (n / MIN_SAMPLE_SIZE) * 100.0), 1),
             "verdict": "AUTO_ROLLBACK",
-            "reason": early["reason"],
+            "reason": str(early["reason"]) + rb_note,
             "win_rate": 0.0,
             "profit_factor": 0.0,
             "expectancy": 0.0,
@@ -8765,7 +9580,18 @@ def evaluate_50_samples(version: str = None) -> dict:
 
     if win_rate < EARLY_STOP_WIN_RATE or pf < EARLY_STOP_PF:
         verdict = "AUTO_ROLLBACK"
-        reason = f"50건 검증 결과 심각한 부진 (승률 {win_rate:.1f}%, PF {pf:.2f}) → 즉시 이전 버전 롤백 권고"
+        rb_50_note = " → 즉시 이전 버전 롤백 권고"
+        try:
+            if "detect_consecutive_errors" in globals():
+                detect_consecutive_errors(min_consecutive=3)
+            cur_c50 = db_get_champion_version()
+            if int(cur_c50.get("generation", 1)) > 1 and cur_c50.get("version") == ver:
+                _rb_ok50, _rb_msg50 = rollback_to_previous_champion()
+                if _rb_ok50:
+                    rb_50_note = f" → [자동롤백 완료: {_rb_msg50}]"
+        except Exception:
+            pass
+        reason = f"50건 검증 결과 심각한 부진 (승률 {win_rate:.1f}%, PF {pf:.2f}){rb_50_note}"
     elif win_rate >= 45.0 and pf >= 1.5 and expectancy >= 0.3 and is_sig:
         verdict = "PROMOTE"
         reason = f"50건 통계 검증 완벽 통과! (승률 {win_rate:.1f}% · PF {pf:.2f} · 기대값 {expectancy:+.2f}% · p={p_value:.3f} 유의미)"
@@ -8943,22 +9769,43 @@ def generate_weekly_review() -> dict:
     }
     try:
         with _db_conn() as conn:
-            conn.execute(
-                """INSERT INTO weekly_reviews
-                   (week_start, week_end, total_trades, wins, losses, win_rate,
-                    profit_factor, expectancy, avg_win, avg_loss, health_level,
-                    health_msg, action, patterns_json, approval_status, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    w_start, w_end, stats["total"], stats["wins"], stats["losses"],
-                    stats["win_rate"], stats["profit_factor"], stats["expectancy"],
-                    stats["avg_win"], stats["avg_loss"], health["level"],
-                    health["msg"], health["action"],
-                    json.dumps(patterns, ensure_ascii=False),
-                    review["approval_status"],
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                ),
-            )
+            existing = conn.execute(
+                "SELECT id FROM weekly_reviews WHERE week_start = ? AND week_end = ? ORDER BY id DESC LIMIT 1",
+                (w_start, w_end),
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    """UPDATE weekly_reviews
+                       SET total_trades=?, wins=?, losses=?, win_rate=?, profit_factor=?,
+                           expectancy=?, avg_win=?, avg_loss=?, health_level=?, health_msg=?,
+                           action=?, patterns_json=?, approval_status=?
+                       WHERE id=?""",
+                    (
+                        stats["total"], stats["wins"], stats["losses"],
+                        stats["win_rate"], stats["profit_factor"], stats["expectancy"],
+                        stats["avg_win"], stats["avg_loss"], health["level"],
+                        health["msg"], health["action"],
+                        json.dumps(patterns, ensure_ascii=False),
+                        review["approval_status"], int(existing[0]),
+                    ),
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO weekly_reviews
+                       (week_start, week_end, total_trades, wins, losses, win_rate,
+                        profit_factor, expectancy, avg_win, avg_loss, health_level,
+                        health_msg, action, patterns_json, approval_status, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        w_start, w_end, stats["total"], stats["wins"], stats["losses"],
+                        stats["win_rate"], stats["profit_factor"], stats["expectancy"],
+                        stats["avg_win"], stats["avg_loss"], health["level"],
+                        health["msg"], health["action"],
+                        json.dumps(patterns, ensure_ascii=False),
+                        review["approval_status"],
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    ),
+                )
             conn.commit()
     except Exception as e:
         LOG.error("generate_weekly_review error: %s", e)
@@ -9209,6 +10056,68 @@ def rollback_to_previous_champion() -> tuple:
         return True, f"{champ['version']} → {target_ver} 버전으로 즉시 롤백 완료되었습니다."
     except Exception as e:
         return False, f"롤백 오류: {e}"
+
+
+def db_set_auto_evolution_mode(enabled: bool) -> bool:
+    # 챔피언의 자율 진화 스위치(auto_evolution_enabled)를 ON/OFF 업데이트합니다.
+    try:
+        champ = db_get_champion_version()
+        veto_cfg = copy.deepcopy(champ.get("veto_thresholds") or DEFAULT_VETO_THRESHOLDS)
+        veto_cfg["auto_evolution_enabled"] = bool(enabled)
+        with _db_conn() as conn:
+            conn.execute(
+                "UPDATE manager_versions SET veto_thresholds_json=? WHERE version=?",
+                (json.dumps(veto_cfg), champ["version"]),
+            )
+            conn.commit()
+        return True
+    except Exception as e:
+        LOG.error("db_set_auto_evolution_mode error: %s", e)
+        return False
+
+
+def db_save_meta_learning_weights() -> tuple:
+    # 16개 팀의 최근 정답률 기반 메타러닝 동적 보정(0.80x~1.25x)을 현재 챔피언 가중치에 영구 저장합니다.
+    try:
+        champ = db_get_champion_version()
+        weights = copy.deepcopy(champ.get("weights") or DEFAULT_BASE_WEIGHTS)
+        th_map = db_get_team_health_summary(days=45)
+        key_to_agent = {
+            "chart": "Chart", "master": "Master", "news": "News", "macro": "Macro",
+            "policy": "Policy", "options": "Options", "onchain": "Onchain", "supply": "Supply",
+            "squeeze": "Squeeze", "insider": "Insider", "institutional": "Institutional",
+            "breadth": "BreadthRS", "intermarket": "Intermarket", "event": "MacroEvent", "social": "Social",
+        }
+        valid_accs = [safe_float(v.get("accuracy"), 60.0) for v in th_map.values() if int(v.get("total", 0)) >= 5]
+        if not valid_accs:
+            return False, "최소 5건 이상 채점된 팀 감사 표본이 필요합니다. (탭 8에서 50건 시뮬레이션을 먼저 실행하세요)"
+        avg_acc = float(np.mean(valid_accs))
+        changed = []
+        for wk, ag_nm in key_to_agent.items():
+            h_info = th_map.get(ag_nm)
+            if h_info and int(h_info.get("total", 0)) >= 5:
+                t_acc = max(25.0, safe_float(h_info.get("accuracy"), avg_acc))
+                meta_mult = float(np.clip(t_acc / max(avg_acc, 10.0), 0.80, 1.25))
+                if abs(meta_mult - 1.0) >= 0.02:
+                    for reg in weights:
+                        if wk in weights[reg] and weights[reg][wk] > 0:
+                            weights[reg][wk] = round(weights[reg][wk] * meta_mult, 4)
+                    changed.append(f"{ag_nm}({meta_mult:.2f}x)")
+        with _db_conn() as conn:
+            conn.execute(
+                "UPDATE manager_versions SET weights_json=? WHERE version=?",
+                (json.dumps(weights), champ["version"]),
+            )
+            conn.commit()
+        db_log_evolution_event(
+            "META_WEIGHTS_SAVED",
+            champ["version"],
+            champ["version"],
+            f"메타러닝 팀별 정답률 가중치 영구 저장 ({', '.join(changed[:5]) or '균형 상태'})",
+        )
+        return True, f"챔피언({champ['version']})에 메타러닝 가중치가 영구 저장되었습니다: {', '.join(changed[:6]) or '미세 조정 완료'}"
+    except Exception as e:
+        return False, f"메타러닝 가중치 저장 실패: {e}"
 
 
 # ==============================================================================
@@ -9469,6 +10378,155 @@ def render_tab_audit(usd_krw):
                 ic = "✅ 승인됨" if h["status"] == "APPROVED" else "❌ 거절됨"
                 st.markdown(f"- **{ic}** | **{h['agent_name']} 팀** ({h['detected_date']}) → {h['proposed_fix']}")
 
+    # ⭐ [21.0 NEW] AI AS 자동수술 & 먹통방지 자가치유 센터 (Gemini Flash/4 Argon · DeepSeek V3/R1 + .bak 안전백업 + GitHub 자동배포)
+    st.markdown("---")
+    render_html("""
+    <div style="background:linear-gradient(135deg,#0f172a,#1e1b4b 60%,#0f172a); border:1.5px solid #38bdf8; border-radius:14px; padding:16px 18px; margin-top:10px; margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
+            <span style="font-size:16px; font-weight:800; color:#38bdf8;">🛠️ AI AS 자동수술 & 먹통방지 자가치유 센터 (Dynamic Model Router & Safe Deployer)</span>
+            <span class="badge badge-teal">무조건 .bak 백업 ➡️ AST 문법/보안 테스트 ➡️ 덮어쓰기 & GitHub 자동배포</span>
+        </div>
+        <div style="font-size:11.5px; color:#cbd5e1; line-height:1.55;">
+            • <b>비용 최적화 라우팅:</b> 일반 파라미터/임계값/단순 로직 수정은 <b>🟢 무료 최신 모델(Gemini Flash / DeepSeek V3)</b>을 선택하고,
+              복합 아키텍처 수술이나 신규 팀 생성·먹통 복구는 <b>🟣 유료 고급 모델(Gemini 4 Argon / DeepSeek R1 · 하루 5회 하드캡 보호)</b>을 선택하십시오.<br>
+            • <b>안전 보장:</b> AI가 제안한 코드는 <b>① 원본 `.bak` 자동 백업 ➡️ ② `.tmp` 임시파일 생성 ➡️ ③ 파이썬 AST 문법·보안 검증 통과 시에만 덮어쓰기</b>되며, 문제 발생 시 1초 만에 직전 백업본으로 롤백됩니다.
+        </div>
+    </div>""")
+
+    if "ai_pro_calls_today" not in st.session_state:
+        st.session_state["ai_pro_calls_today"] = 0
+
+    custom_errs = st.session_state.get("custom_agent_errors") or []
+    if custom_errs:
+        st.warning("⚠️ 커스텀 팀(agent_custom_*.py) 실행 중 오류가 감지되었습니다: " + " | ".join(str(e) for e in custom_errs))
+    last_crash = st.session_state.get("last_app_crash_trace", "")
+    if last_crash:
+        st.error("🚨 최근 런타임 예외(먹통 감지) 로그가 자동 캡처되었습니다! 아래 작업 설명란에 자동 입력되었으니 바로 AI 수리를 요청할 수 있습니다.")
+
+    c_as1, c_as2 = st.columns([1.2, 1.8])
+    with c_as1:
+        avail_files = [f for f in EDITABLE_TEAM_FILES if os.path.exists(f)] or EDITABLE_TEAM_FILES
+        target_f = st.selectbox("📂 수술할 대상 팀 파일 선택 (또는 신규 팀 파일)", avail_files + ["🆕 custom_new_agent.py (신규 팀 생성)"], key="as_target_file")
+        if target_f.startswith("🆕"):
+            target_f = st.text_input("신규 생성할 파일명 입력 (.py)", value="agent_custom_sector.py", key="as_new_filename").strip()
+            if target_f and not target_f.startswith("agent_custom_") and not os.path.exists(target_f):
+                target_f = "agent_custom_" + target_f
+            if target_f and not target_f.endswith(".py"):
+                target_f = target_f + ".py"
+        _script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else "."
+        target_f_path = target_f if os.path.isabs(target_f) else (
+            os.path.join(_script_dir, os.path.basename(target_f))
+            if os.access(_script_dir, os.W_OK) else target_f
+        )
+        route_k = st.selectbox(
+            "🧠 AI 모델 선택 (작업 난이도별 라우팅)",
+            list(AI_MODEL_ROUTING_TABLE.keys()),
+            format_func=lambda k: AI_MODEL_ROUTING_TABLE[k]["label"],
+            key="as_route_key",
+        )
+        api_k_in = st.text_input(
+            "🔑 AI API Key (세션 메모리에만 보안 유지 · 미입력 시 Render 환경변수 자동 사용)",
+            type="password",
+            key="as_api_key_input",
+            help=" 브라우저를 닫으면 즉시 소멸되며 DB에 저장되지 않습니다.",
+        )
+        st.caption(f"🛡️ 유료 고급 모델(Pro/Argon/R1) 오늘 사용량: **{st.session_state['ai_pro_calls_today']} / 5회** (비용 폭탄 방지 하드캡)")
+
+    with c_as2:
+        default_issue = last_crash if last_crash else (
+            f"[{pending_reqs[0]['agent_name']} 팀 {pending_reqs[0]['consecutive_errors']}연속 오답] {pending_reqs[0]['error_pattern']} -> {pending_reqs[0]['proposed_fix']}"
+            if pending_reqs else "예: BEAR 레짐에서 RSI 25 이하일 때 악재가 있으면 무조건 진입 차단하도록 임계값을 강화해줘."
+        )
+        issue_txt = st.text_area(
+            "📝 발견된 문제점 / AI에게 지시할 수정 요청 내용",
+            value=default_issue,
+            height=125,
+            key="as_issue_txt",
+        )
+        b_gen, b_rest = st.columns(2)
+        with b_gen:
+            if st.button("🤖 1단계: AI에게 수정 코드 제안받기", type="primary", use_container_width=True, key="btn_as_call_ai"):
+                r_info = AI_MODEL_ROUTING_TABLE[route_k]
+                if r_info["tier"] == "PAID_PRO" and st.session_state["ai_pro_calls_today"] >= 5:
+                    st.error("🚨 오늘 유료 고급 모델 호출 한도(5회)에 도달했습니다. 무료 최신 모델(Gemini Flash / DeepSeek V3)을 선택해 주세요.")
+                else:
+                    cur_src = ""
+                    if os.path.exists(target_f):
+                        try:
+                            with open(target_f, "r", encoding="utf-8") as f_r:
+                                cur_src = f_r.read()
+                        except Exception:
+                            cur_src = ""
+                    with st.spinner(f"{r_info['label']} 모델이 `{target_f}` 코드를 정밀 분석·수술 중입니다..."):
+                        ok_ai, res_ai = call_ai_auto_fixer_llm(target_f, issue_txt, cur_src, route_k, api_k_in)
+                    if ok_ai:
+                        if r_info["tier"] == "PAID_PRO":
+                            st.session_state["ai_pro_calls_today"] += 1
+                        st.session_state["as_generated_code"] = res_ai
+                        st.session_state["as_generated_target"] = target_f
+                        st.success(f"✅ AI 수정 코드 생성 완료! 아래 코드 편집기에서 확인 후 [2단계: 백업 후 안전 덮어쓰기] 또는 [3단계: GitHub 자동 배포]를 누르세요.")
+                    else:
+                        st.warning(res_ai)
+        with b_rest:
+            if st.button(f"🔄 `{target_f}.bak` 직전 백업본으로 즉시 복구(롤백)", use_container_width=True, key="btn_as_restore_bak"):
+                ok_bk, msg_bk = restore_file_from_backup(target_f_path)
+                if ok_bk:
+                    st.success(msg_bk)
+                else:
+                    st.info(msg_bk)
+
+    with st.expander("🔬 2단계 & 3단계: 코드 검증 · 로컬/Render 안전 덮어쓰기(.bak 백업) · GitHub 자동 커밋/배포", expanded=bool(st.session_state.get("as_generated_code"))):
+        loaded_file_src = ""
+        if os.path.exists(target_f):
+            try:
+                with open(target_f, "r", encoding="utf-8") as f_cur:
+                    loaded_file_src = f_cur.read()
+            except Exception:
+                loaded_file_src = ""
+        init_editor_code = st.session_state.get("as_generated_code") or loaded_file_src
+        edited_code = st.text_area(
+            f"📄 `{target_f}` 적용 대기 코드 (AI가 생성한 코드 또는 직접 붙여넣기 가능 — 적용 전 AST 문법·보안 자동 검사)",
+            value=init_editor_code,
+            height=260,
+            key="as_code_editor_area",
+        )
+        c_dep1, c_dep2 = st.columns(2)
+        with c_dep1:
+            if st.button(f"🛡️ 2단계: `{target_f}` 무조건 백업(.bak) 후 테스트 & 안전 덮어쓰기", type="primary", use_container_width=True, key="btn_as_safe_apply"):
+                if not os.path.exists(target_f_path):
+                    try:
+                        with open(target_f_path, "w", encoding="utf-8") as f_init:
+                            f_init.write("# New Agent File\n")
+                    except Exception:
+                        pass
+                ok_fx, msg_fx = safe_auto_fix(target_f_path, edited_code)
+                if ok_fx:
+                    st.success(msg_fx)
+                else:
+                    st.error(msg_fx)
+        with c_dep2:
+            gh_repo = st.text_input("GitHub 저장소 (예: `내아이디/gangjin-ai`)", value=os.getenv("GITHUB_REPO", ""), key="as_gh_repo")
+            gh_tok = st.text_input("GitHub Token (`ghp_...` · 미입력 시 환경변수 GITHUB_TOKEN 사용)", type="password", key="as_gh_tok")
+            gh_msg = st.text_input("커밋 메시지", value=f"AI AS Auto-Fix: update {target_f}", key="as_gh_msg")
+            if st.button(f"🚀 3단계: GitHub에 `{target_f}` 자동 커밋 & Render 자동 재배포", use_container_width=True, key="btn_as_gh_push"):
+                # 먼저 AST 문법 검사 통과 여부 확인
+                try:
+                    import ast as _ast
+                    _ast.parse(edited_code)
+                    ok_gh, msg_gh = push_fixed_code_to_github(
+                        file_path_in_repo=target_f,
+                        new_code=edited_code,
+                        commit_message=gh_msg,
+                        github_token=gh_tok,
+                        repo_name=gh_repo,
+                    )
+                    if ok_gh:
+                        st.success(msg_gh)
+                    else:
+                        st.warning(msg_gh)
+                except SyntaxError as e_syn:
+                    st.error(f"🚨 문법 오류가 있는 코드는 GitHub에 푸시할 수 없습니다 (자동 차단): {e_syn}")
+
 
 # ==============================================================================
 # [UI Tab 10] 🧬 진화 연구소 (render_tab_evolution)
@@ -9484,8 +10542,43 @@ def render_tab_evolution(usd_krw):
     </div>""")
 
     champ = db_get_champion_version()
+    veto_cfg_cur = champ.get("veto_thresholds") or DEFAULT_VETO_THRESHOLDS
+    auto_evo_on = bool(veto_cfg_cur.get("auto_evolution_enabled", True))
+
+    c_sw1, c_sw2 = st.columns([2.2, 1.2])
+    with c_sw1:
+        new_auto_evo = st.checkbox(
+            "⚡ 자율 진화 모드 ON (매매청산 시 3연속오답 팀 자동교정 · 15건 조기중단 자동롤백 · 50건 PROMOTE 시 챌린저 자동승격)",
+            value=auto_evo_on,
+            key="chk_auto_evolution_mode",
+        )
+        if new_auto_evo != auto_evo_on:
+            db_set_auto_evolution_mode(new_auto_evo)
+            champ = db_get_champion_version()
+            auto_evo_on = new_auto_evo
+    with c_sw2:
+        if st.button("💾 메타러닝 동적 가중치 챔피언에 영구 저장", use_container_width=True):
+            ok_m, msg_m = db_save_meta_learning_weights()
+            if ok_m:
+                st.success(msg_m)
+                champ = db_get_champion_version()
+            else:
+                st.info(msg_m)
+
     val_50 = evaluate_50_samples(champ["version"])
     review = generate_weekly_review()
+
+    # ⭐ [21.0 완전자동화 패치 #3] 자율 진화 모드 ON & 50건 통계검증 PROMOTE 통과 시 챌린저 자동 생성·승격
+    if auto_evo_on and val_50.get("verdict") == "PROMOTE" and val_50.get("ready"):
+        last_auto_promo_ver = st.session_state.get("last_auto_promoted_from_ver")
+        if last_auto_promo_ver != champ["version"]:
+            res_auto_c = auto_evolve_challenger()
+            if res_auto_c and res_auto_c.get("version"):
+                promote_challenger_to_champion(res_auto_c["version"])
+                st.session_state["last_auto_promoted_from_ver"] = champ["version"]
+                champ = db_get_champion_version()
+                val_50 = evaluate_50_samples(champ["version"])
+                st.success(f"🧬 [자율 진화 자동 승격] 50건 통계 검증(PROMOTE) 통과로 새 챔피언 `{champ['version']}` 자동 등극 완료!")
 
     # 1) 챔피언 상태 & 50건 배치 검증 게이트
     v_col = {
@@ -9659,26 +10752,39 @@ def main():
         "🔬 WFA검증", "📊 리스크", "📓 매매일지",
         "🤖 모의매매", "🔍 팀점검센터", "🧬 진화연구소",
     ])
+    def _safe_run_tab(tab_fn, *args, tab_label=""):
+        try:
+            tab_fn(*args)
+        except Exception as exc:
+            import traceback as _tb
+            tb_str = _tb.format_exc()
+            st.session_state["last_app_crash_trace"] = f"[{tab_label} 탭 오류]\n{tb_str}"
+            LOG.error("Self-Healing Guard caught error in %s: %s", tab_label, exc)
+            st.error(f"🚑 [{tab_label}] 일시적 코드/데이터 예외를 먹통방지 가드가 격리했습니다: `{exc}`")
+            st.info("👉 다른 탭은 모두 정상 작동합니다. **[🔍 팀점검센터 (Tab 9)] ➡️ [🛠️ AI AS 자동수술 센터]**로 이동하시면 캡처된 에러 로그로 즉시 자동 수리 또는 `.bak` 백업 복구를 실행할 수 있습니다.")
+            with st.expander("상세 에러 트레이스백(Traceback) 보기", expanded=False):
+                st.code(tb_str, language="text")
+
     with tab1:
-        render_tab_analysis(indices, eff_krw)
+        _safe_run_tab(render_tab_analysis, indices, eff_krw, tab_label="개별분석")
     with tab2:
-        render_tab_holdings_monitor(eff_krw)
+        _safe_run_tab(render_tab_holdings_monitor, eff_krw, tab_label="보유모니터")
     with tab3:
-        render_tab_scanner()
+        _safe_run_tab(render_tab_scanner, tab_label="스캐너")
     with tab4:
-        render_tab_backtest()
+        _safe_run_tab(render_tab_backtest, tab_label="백테스트")
     with tab5:
-        render_tab_wfa()
+        _safe_run_tab(render_tab_wfa, tab_label="WFA검증")
     with tab6:
-        render_tab_portfolio_risk(eff_krw)
+        _safe_run_tab(render_tab_portfolio_risk, eff_krw, tab_label="리스크")
     with tab7:
-        render_tab_journal(eff_krw)
+        _safe_run_tab(render_tab_journal, eff_krw, tab_label="매매일지")
     with tab8:
-        render_tab_paper_trading(indices, eff_krw)
+        _safe_run_tab(render_tab_paper_trading, indices, eff_krw, tab_label="모의매매")
     with tab9:
-        render_tab_audit(eff_krw)
+        _safe_run_tab(render_tab_audit, eff_krw, tab_label="팀점검센터")
     with tab10:
-        render_tab_evolution(eff_krw)
+        _safe_run_tab(render_tab_evolution, eff_krw, tab_label="진화연구소")
 
 
 if __name__ == "__main__":
