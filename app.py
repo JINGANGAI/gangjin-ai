@@ -3103,8 +3103,7 @@ def evaluate_holding_noise_filter_cached(ticker, buy_price, qty, target_roi_pct,
     h = get_history(ticker)
     return evaluate_holding_noise_filter(ticker, h, buy_price, qty, target_roi_pct, custom_stop_pct)
 
-@st.cache_data(ttl=CFG["cache"]["scanner"])
-def _analyze_single_scan_ticker(t, df_slice):
+def _analyze_single_scan_ticker(t, df_slice=None):
     try:
         df = pd.DataFrame()
         if df_slice is not None and not df_slice.empty:
@@ -3116,15 +3115,28 @@ def _analyze_single_scan_ticker(t, df_slice):
             except Exception:
                 df = pd.DataFrame()
         if df.empty or len(df) < 20:
+            try:
+                yh = yf.Ticker(t).history(period="3mo")
+                if yh is not None and not yh.empty and "Close" in yh.columns:
+                    df = _clean_tz(yh)
+                    rt_t = get_realtime_quote(t)
+                    if rt_t and safe_float(rt_t.get("price"), 0.0) > 0:
+                        df = _stitch_realtime_quote(df, rt_t)
+            except Exception:
+                df = pd.DataFrame()
+        if df.empty or len(df) < 20:
             df = get_history(t, period="3mo")
         if df.empty or len(df) < 20:
             return None
         close, high, low, vol = df['Close'], df['High'], df['Low'], df['Volume']
         curr_price = safe_float(close.iloc[-1], 0.0)
-        prev_price = safe_float(close.iloc[-2], curr_price)
+        prev_price = safe_float(close.iloc[-2], curr_price) if len(close) >= 2 else curr_price
         if curr_price <= 0:
             return None
         change_pct = ((curr_price - prev_price) / prev_price) * 100.0 if prev_price > 0 else 0.0
+        idx_1m = max(0, len(close) - 22) if len(close) >= 22 else 0
+        price_1m_ago = safe_float(close.iloc[idx_1m], curr_price)
+        ret_1m_pct = ((curr_price - price_1m_ago) / price_1m_ago) * 100.0 if price_1m_ago > 0 else 0.0
         ema20 = safe_float(close.ewm(span=20, adjust=False).mean().iloc[-1], curr_price)
         box_high = safe_float(high.rolling(20).max().iloc[-1], curr_price)
         box_low = safe_float(low.rolling(20).min().iloc[-1], curr_price)
@@ -3157,14 +3169,15 @@ def _analyze_single_scan_ticker(t, df_slice):
         return {
             "raw_ticker": t,
             "ticker": html.escape(t),
-            "price": curr_price,
-            "change_pct": change_pct,
+            "price": round(curr_price, 2),
+            "change_pct": round(change_pct, 2),
+            "ret_1m_pct": round(ret_1m_pct, 2),
             "action": action,
             "badge": badge,
-            "rsi": rsi,
-            "vol": vol_ratio,
-            "box_high": box_high,
-            "box_low": box_low,
+            "rsi": round(rsi, 1),
+            "vol": round(vol_ratio, 1),
+            "box_high": round(box_high, 2),
+            "box_low": round(box_low, 2),
             "atr_pct": round(atr_pct, 1),
             "ts_rec": ts_rec,
             "is_buy": "BUY" in action,
@@ -3173,6 +3186,7 @@ def _analyze_single_scan_ticker(t, df_slice):
     except Exception:
         return None
 
+@st.cache_data(ttl=CFG["cache"]["scanner"])
 def scan_watchlist(ticker_string):
     tickers = list(dict.fromkeys(t.strip().upper() for t in ticker_string.replace(',', ' ').split() if t.strip()))
     if not tickers:
@@ -7022,8 +7036,8 @@ def render_tab_holdings_monitor(usd_krw):
 def render_tab_scanner():
     render_html("""
     <div style="margin-bottom:12px;">
-        <div style="font-size:18px; font-weight:800; color:#fff;">🎯 멀티 종목 병렬 스캐너 (yfinance 고속 병렬 분석)</div>
-        <div style="font-size:12px; color:#94a3b8; margin-top:2px;">6대 거장 + Wilder RSI + ATR 트레일링 스탑 · 결과 카드에서 [🔍 바로 분석] 클릭 시 개별분석 탭으로 즉시 연동</div>
+        <div style="font-size:18px; font-weight:800; color:#fff;">🎯 멀티 종목 병렬 스캐너 (yfinance 3개월 병렬 실시간 분석)</div>
+        <div style="font-size:12px; color:#94a3b8; margin-top:2px;">yfinance 3개월 병렬 데이터 기반 당일 등락률 · 1개월 수익률 · 6대 거장 + Wilder RSI + ATR 트레일링 스탑 · 우측 [🔍 바로 분석] 클릭 시 개별분석 탭 즉시 연동</div>
     </div>""")
     default_tickers = "NVDA TSLA AAPL MSFT AMZN GOOGL META PLTR AMD AVGO TSM ARM MU SMCI MSTR COIN MARA RIOT IREN CLSK IONQ RKLB ASTS CRWD PANW NFLX SOFI HOOD SNOW LLY"
     txt = st.text_area("스캔할 티커 입력 (공백 또는 쉼표로 구분)", value=default_tickers, height=75, key="s_txt")
@@ -7034,7 +7048,7 @@ def render_tab_scanner():
         filt = st.radio("필터", ["전체", "🔥 STRONG BUY", "🟢 PANIC BUY", "매수 전체", "🟡 B급 관찰 (WATCH)"], horizontal=True, key="s_filt")
     if start or "s_res" in st.session_state:
         if start:
-            with st.spinner("yfinance 병렬 엔진으로 종목 데이터를 고속 분석 중입니다..."):
+            with st.spinner("yfinance 병렬 엔진으로 3개월 데이터를 받아와 당일 등락률 및 1개월 수익률을 실시간 분석 중입니다..."):
                 st.session_state.s_res = scan_watchlist(txt)
         data = st.session_state.get("s_res", [])
         if not data:
@@ -7049,10 +7063,13 @@ def render_tab_scanner():
             ff = [r for r in data if r.get('is_buy')]
         elif filt == "🟡 B급 관찰 (WATCH)":
             ff = [r for r in data if r.get('is_watch') or "WATCH" in r.get('action', '')]
-        render_html(f"""<div style="margin:12px 0;font-size:13px;font-weight:700;">총 {len(data)}개 종목 병렬 분석 완료 — 조건 부합 <b style="color:#38bdf8;">{len(ff)}개</b> 포착</div>""")
+        render_html(f"""<div style="margin:12px 0;font-size:13px;font-weight:700;">총 {len(data)}개 종목 3개월 병렬 분석 완료 — 조건 부합 <b style="color:#38bdf8;">{len(ff)}개</b> 포착</div>""")
         for idx_s, it_ in enumerate(ff):
             cc = "#10b981" if it_['change_pct'] >= 0 else "#f43f5e"
             cs = "+" if it_['change_pct'] >= 0 else ""
+            ret_1m = safe_float(it_.get('ret_1m_pct'), 0.0)
+            c1m = "#10b981" if ret_1m >= 0 else "#f43f5e"
+            s1m = "+" if ret_1m >= 0 else ""
             raw_tk = it_.get("raw_ticker") or it_["ticker"]
             c_card, c_btn = st.columns([5.2, 1.0])
             with c_card:
@@ -7062,9 +7079,13 @@ def render_tab_scanner():
                         <span style="font-size:16px; font-weight:800; font-family:'JetBrains Mono'; color:#fff;">{it_['ticker']}</span>
                         <span class="badge {it_['badge']}">{it_['action']}</span>
                     </div>
-                    <div class="mono" style="text-align:right; min-width:100px;">
+                    <div class="mono" style="text-align:right; min-width:155px;">
                         <div style="font-size:14px; font-weight:800; color:#fff;">${it_['price']:,.2f}</div>
-                        <div style="font-size:11px; color:{cc};">{cs}{it_['change_pct']:.2f}%</div>
+                        <div style="font-size:11px;">
+                            <span style="color:{cc}; font-weight:700;">당일 {cs}{it_['change_pct']:.2f}%</span>
+                            <span style="color:#475569;"> | </span>
+                            <span style="color:{c1m}; font-weight:700;">1개월 {s1m}{ret_1m:.2f}%</span>
+                        </div>
                     </div>
                     <div style="font-size:11px; color:#94a3b8; display:flex; gap:12px; flex-wrap:wrap;">
                         <span>RSI <b class="text-white">{it_['rsi']:.1f}</b></span>
@@ -7076,6 +7097,7 @@ def render_tab_scanner():
             with c_btn:
                 if st.button("🔍 바로 분석", key=f"scan_jump_{raw_tk}_{idx_s}", use_container_width=True):
                     st.session_state.selected_ticker = raw_tk
+                    st.session_state["analysis_ticker_input_box"] = raw_tk
                     st.session_state["_scanner_jump_ticker"] = raw_tk
                     st.session_state["_trigger_switch_to_tab1"] = True
                     st.rerun()
@@ -10056,17 +10078,9 @@ def _render_eod_paper_trading_inner(indices, usd_krw):
             </div>""")
 
 def render_tab_paper_trading(indices, usd_krw):
-    sub_mode = st.radio(
-        "모의매매 & 스윙자동매매봇 관제 모드 선택",
-        ["🤖 스윙자동매매봇 통합 관제 센터 (6대 아키텍처 + 3대 킬러)", "📊 EOD 모의매매 리포트 & 50건 배치 시뮬레이터"],
-        horizontal=True,
-        key="paper_tab_sub_mode_radio",
-        label_visibility="collapsed",
-    )
-    if sub_mode.startswith("🤖"):
-        render_tab_swing_robot(indices, usd_krw)
-    else:
-        _render_eod_paper_trading_inner(indices, usd_krw)
+    render_tab_swing_robot(indices, usd_krw)
+    st.markdown("<hr style='margin:22px 0; border-color:#1e293b;'>", unsafe_allow_html=True)
+    _render_eod_paper_trading_inner(indices, usd_krw)
 
 def render_tab_audit(usd_krw):
     detect_consecutive_errors(min_consecutive=3)
@@ -13068,7 +13082,7 @@ def main():
 
     if st.session_state.get("_trigger_switch_to_tab1"):
         st.session_state["_trigger_switch_to_tab1"] = False
-        components.html(
+        st.components.v1.html(
             """<script>
             try {
                 const tabs = window.parent.document.querySelectorAll('button[data-baseweb="tab"]');
