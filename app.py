@@ -3,7 +3,7 @@
 # - ⭐ [21.0 NEW] 기관급 펀드 퀀트 동적 가중치 & 11대 섹터 자금흐름 레이더 & AI AS 자동수술/GitHub 배포 완전체:
 #     · [Fund-Quant Chief] 확률적 레짐 소프트 블렌딩(Soft Blending) + 16개 팀 실시간 정답률 메타러닝 가중치 + 섹터 자금쏠림 동적 부스팅 + 쿼터 켈리(Quarter-Kelly) 사이징 + B급 관찰(WATCH) 3단계 분류
 #     · [11-Sector Money Flow Radar] 나스닥/미국 11대 GICS 섹터 ETF(XLK·XLV·XLF·XLE·XLI·XLC·XLY·XLP·XLU·XLB·XLRE) 1주/1개월 달러 거래대금 자금 유입·유출 TOP 3 레이더 카드 (BreadthRS 팀 통합)
-#     · [AI AS 자동수술 & 먹통방지 센터] 무료 최신 모델(Gemini Flash / DeepSeek V3) vs 유료 고급 모델(Gemini 4 Argon / DeepSeek R1, 일 5회 하드캡) 동적 라우팅 + 자동 .bak 백업 + AST 보안/문법 검증 후 안전 덮어쓰기(safe_auto_fix) + GitHub 자동 커밋/푸시(Render Auto-Deploy 연동)
+#     · [AI AS 자동수술 & 먹통방지 센터] 무료 최신 모델(Gemini 3.8 Flash / DeepSeek V3) vs 유료 고급 모델(Gemini 3.1 Pro Preview / DeepSeek R1, 일 5회 하드캡) 동적 라우팅 + 자동 .bak 백업 + AST 보안/문법 검증 + 대용량 파일 부분 패치 후 안전 덮어쓰기(safe_auto_fix) + GitHub 자동 커밋/푸시(Render Auto-Deploy 연동)
 #     · [Render 2GB + 영구 디스크(/var/data) & SQLite WAL] 프로세스 재시작 시에도 DB/백업 보존 + WAL 동시성 잠금 방지 + 50건 시뮬레이터 실제 에이전트 함수(Chart·Master·Macro·ExtraMasters·Chief) 연동
 # - ⭐ [20.0 NEW] 자율 진화형 컨트롤 타워 & EOD 모의매매 & 16개 팀 감사 시스템 탑재 (총 10개 탭 완전체):
 #     · [Tab 8 / agent_paper.py] 🤖 모의매매팀 EOD 시뮬레이션: T일 종가 시그널 -> T+1일 시가 진입 -> 일봉 고/저가 청산 (Look-ahead Bias 0% + 50건 고속 검증기)
@@ -8941,11 +8941,16 @@ def db_update_fix_request_status(req_id: int, new_status: str):
 # ⭐ [21.0 NEW] AI AS 자동수술 & 안전 배포(.bak 백업 -> AST 검증 -> 덮어쓰기) & GitHub 자동 커밋 엔진
 # ------------------------------------------------------------------------------
 # 💡 모델명 안내: 구글/딥시크 최신 API 모델명은 https://ai.google.dev/gemini-api/docs/models 에서 확인·변경 가능합니다.
+# ⭐ [2026-10] Gemini 2.5 Flash는 신규 API 키에서 접근이 제한되어 HTTP 404가 발생합니다.
+#    현재 Google이 권장하는 안정(GA) 모델은 gemini-3.8-flash(2026-09-02 출시)이며,
+#    고난도 수술은 아직 generateContent를 지원하는 gemini-3.1-pro-preview를 유지합니다.
+#    (Gemini 4 Argon은 최신 Interactions API 중심으로 안내되어 기존 generateContent 호출로는 404가 날 수 있습니다.)
 AI_MODEL_ROUTING_TABLE = {
     "SIMPLE_GEMINI": {
-        "label": "🟢 일반 수정 [무료/저비용] — Gemini 2.5/3 Flash (오타·임계값·단순 로직)",
+        "label": "🟢 일반 수정 [무료/저비용] — Gemini 3.8 Flash (오타·임계값·단순 로직)",
         "provider": "gemini",
-        "model_id": "gemini-2.5-flash",
+        "model_id": "gemini-3.8-flash",
+        "fallback_models": ("gemini-3.6-flash", "gemini-3.5-flash-lite"),
         "tier": "FREE",
     },
     "SIMPLE_DEEPSEEK": {
@@ -8958,6 +8963,7 @@ AI_MODEL_ROUTING_TABLE = {
         "label": "🟣 고난도 구조 수술 [유료 고급 · 일 5회 제한] — Gemini 3.1 Pro Preview (복합 오류·팀 추가·먹통 복구)",
         "provider": "gemini",
         "model_id": "gemini-3.1-pro-preview",
+        "fallback_models": ("gemini-3.8-flash",),
         "tier": "PAID_PRO",
     },
     "COMPLEX_DEEPSEEK_R1": {
@@ -8967,6 +8973,22 @@ AI_MODEL_ROUTING_TABLE = {
         "tier": "PAID_PRO",
     },
 }
+
+# 구형 모델명이 세션/DB/외부 설정에 남아 있어도 최신 모델로 자동 승격
+LEGACY_GEMINI_MODEL_MAP = {
+    "gemini-2.5-flash": "gemini-3.8-flash",
+    "gemini-2.0-flash": "gemini-3.8-flash",
+    "gemini-1.5-flash": "gemini-3.8-flash",
+    "gemini-3-flash-preview": "gemini-3.8-flash",
+    "gemini-2.5-pro": "gemini-3.1-pro-preview",
+    "gemini-1.5-pro": "gemini-3.1-pro-preview",
+    "gemini-pro": "gemini-3.1-pro-preview",
+}
+
+# 10만 자를 넘는 대용량 파일은 모델 출력 한도(65,536토큰) 안에 전체 코드를 담을 수 없으므로
+# 전체 재작성 대신 '정확한 find/replace 패치'만 받아 원본에 적용합니다.
+AI_FULL_REWRITE_CHAR_LIMIT = 100_000
+AI_LARGE_FILE_CONTEXT_LIMIT = 900_000
 
 EDITABLE_TEAM_FILES = [
     "agent_chart.py", "agent_news.py", "agent_breadth.py", "agent_macro.py",
@@ -8992,6 +9014,23 @@ def safe_auto_fix(file_path: str, new_code_from_ai: str) -> tuple:
         return False, f"원본 파일이 존재하지 않습니다: {file_path}"
     if not new_code_from_ai or len(new_code_from_ai.strip()) < 20:
         return False, "수정할 코드가 비어 있거나 너무 짧습니다."
+
+    # ⭐ [핵심 안전장치] AI가 파일 전체가 아닌 일부만 반환했을 때 원본을 통째로 날리는 사고 방지
+    try:
+        with open(file_path, "r", encoding="utf-8") as f_org:
+            original_code = f_org.read()
+    except Exception:
+        original_code = ""
+    if original_code:
+        orig_len = len(original_code)
+        new_len = len(new_code_from_ai)
+        shrink_limit = 0.90 if orig_len >= 200_000 else (0.60 if orig_len >= 50_000 else 0.40)
+        if orig_len >= 20_000 and new_len < int(orig_len * shrink_limit):
+            return False, (
+                f"🚨 [자동 차단] 원본 {orig_len:,}자 → AI 코드 {new_len:,}자로 급감했습니다. "
+                "AI가 파일 전체가 아닌 일부만 반환한 것으로 보여 덮어쓰기를 취소했습니다(원본 100% 보존). "
+                "10만 자를 넘는 파일은 AI AS가 자동으로 '부분 패치 모드'로 전환되니, 다시 1단계를 실행해 주세요."
+            )
 
     backup_dir = CFG.get("paths", {}).get("backups", "data/backups")
     try:
@@ -9103,6 +9142,23 @@ def push_fixed_code_to_github(
         return False, "GitHub 저장소 이름을 `아이디/저장소명` 형식(예: `gangjin/gangjin-ai`)으로 입력해 주세요."
 
     clean_path = file_path_in_repo.strip().lstrip("/")
+
+    # ⭐ [GitHub 배포 안전장치] 원본 대비 코드가 급감한 '부분 반환'은 Render 자동배포도 차단
+    try:
+        _local_ref = clean_path if os.path.exists(clean_path) else os.path.basename(clean_path)
+        if os.path.exists(_local_ref):
+            with open(_local_ref, "r", encoding="utf-8") as f_l:
+                _orig_len = len(f_l.read())
+            _new_len = len(new_code or "")
+            _limit = 0.90 if _orig_len >= 200_000 else (0.60 if _orig_len >= 50_000 else 0.35)
+            if _orig_len >= 20_000 and _new_len < int(_orig_len * _limit):
+                return False, (
+                    f"🚨 [GitHub 배포 차단] 원본 {_orig_len:,}자 → 배포 코드 {_new_len:,}자로 급감했습니다. "
+                    "AI가 파일 전체가 아닌 일부만 반환한 것으로 보여 커밋/푸시를 취소했습니다(원본 보존)."
+                )
+    except Exception:
+        pass
+
     api_url = f"https://api.github.com/repos/{repo}/contents/{clean_path}"
     headers = {
         "Authorization": f"Bearer {tok}",
@@ -9139,6 +9195,69 @@ def push_fixed_code_to_github(
         return False, f"GitHub 전송 중 네트워크 예외 발생: {ex}"
 
 
+def _sha256_text(text: str) -> str:
+    """원본 코드 지문(SHA-256). 생성 시점 이후 파일이 바뀌었는지 비교해 잘못된 덮어쓰기를 막습니다."""
+    import hashlib as _hashlib
+    return _hashlib.sha256((text or "").encode("utf-8")).hexdigest()
+
+
+def _strip_code_fence(text: str) -> str:
+    """LLM 응답에서 ```python ... ``` 코드펜스만 안전하게 제거합니다."""
+    m = re.search(r"```(?:python)?\s*(.*?)```", text or "", re.DOTALL)
+    return (m.group(1) if m else (text or "")).strip()
+
+
+def _apply_ai_patches(original_code: str, raw_response: str) -> tuple:
+    """
+    ⭐ [대용량 파일 전용] AI가 반환한 JSON 패치(find/replace)를 원본에 정확히 적용합니다.
+    - find가 원본에 '정확히 1회' 등장할 때만 교체합니다.
+    - 하나라도 0회/2회 이상이면 전체 적용을 취소해 원본을 100% 보존합니다.
+    """
+    import json as _json
+
+    txt = (raw_response or "").strip()
+    if not txt.startswith("{") and not txt.startswith("["):
+        starts = [i for i in (txt.find("{"), txt.find("[")) if i != -1]
+        e_idx = max(txt.rfind("}"), txt.rfind("]"))
+        if not starts or e_idx <= min(starts):
+            return False, "AI 응답에서 JSON 패치를 찾지 못했습니다."
+        txt = txt[min(starts):e_idx + 1]
+    try:
+        payload = _json.loads(txt)
+    except Exception as ex:
+        return False, f"AI 패치 JSON 파싱 실패: {ex}"
+
+    if isinstance(payload, list):
+        patches = payload
+    elif isinstance(payload, dict):
+        patches = payload.get("patches")
+    else:
+        patches = None
+    if not isinstance(patches, list) or not patches:
+        return False, "AI 응답에 patches 배열이 없거나 비어 있습니다."
+
+    updated = original_code
+    for i, p in enumerate(patches, 1):
+        if not isinstance(p, dict):
+            return False, f"{i}번째 패치 형식이 올바르지 않습니다."
+        find_txt = p.get("find", p.get("search", p.get("old")))
+        repl_txt = p.get("replace", p.get("new"))
+        if not isinstance(find_txt, str) or not find_txt.strip():
+            return False, f"{i}번째 패치의 find(원본 코드)가 비어 있습니다."
+        if not isinstance(repl_txt, str):
+            return False, f"{i}번째 패치의 replace(새 코드)가 문자열이 아닙니다."
+        hit = updated.count(find_txt)
+        if hit != 1:
+            return False, (
+                f"{i}번째 패치의 find 코드가 원본에서 {hit}회 발견되었습니다. "
+                "정확히 1회만 일치해야 안전하게 적용할 수 있어 전체 적용을 취소했습니다."
+            )
+        updated = updated.replace(find_txt, repl_txt, 1)
+    if updated == original_code:
+        return False, "AI 패치가 원본 코드를 실제로 변경하지 않았습니다."
+    return True, updated
+
+
 def call_ai_auto_fixer_llm(
     target_file: str,
     issue_description: str,
@@ -9148,15 +9267,19 @@ def call_ai_auto_fixer_llm(
 ) -> tuple:
     """
     ⭐ [동적 모델 라우터]
-    - 간단 수정(SIMPLE): 무료/저비용 Gemini Flash 또는 DeepSeek V3 호출
-    - 고난도 구조 수정/먹통 복구(COMPLEX): Gemini 4 Argon / Pro 또는 DeepSeek R1 호출 (세션당 일 5회 하드캡 적용)
+    - 간단 수정(SIMPLE): Gemini 3.8 Flash 또는 DeepSeek V3 호출
+    - 고난도 구조 수정/먹통 복구(COMPLEX): Gemini 3.1 Pro Preview 또는 DeepSeek R1 호출 (일 5회 하드캡)
+    - 10만 자 초과 대용량 파일: 전체 재작성 대신 JSON find/replace '부분 패치 모드'로 안전 수술
     """
     import requests as _req
 
     route_info = AI_MODEL_ROUTING_TABLE.get(route_key, AI_MODEL_ROUTING_TABLE["SIMPLE_GEMINI"])
     provider = route_info["provider"]
-    model_id = route_info["model_id"]
-    tier = route_info["tier"]
+    model_id = str(LEGACY_GEMINI_MODEL_MAP.get(str(route_info["model_id"]), str(route_info["model_id"])))
+    patch_mode = len(current_code or "") > AI_FULL_REWRITE_CHAR_LIMIT
+
+    if patch_mode and len(current_code) > AI_LARGE_FILE_CONTEXT_LIMIT:
+        return False, f"파일이 너무 큽니다({len(current_code):,}자). 90만 자 이하로 분할한 뒤 다시 시도해 주세요."
 
     eff_key = (api_key or "").strip()
     if not eff_key:
@@ -9168,66 +9291,122 @@ def call_ai_auto_fixer_llm(
     if not eff_key:
         return False, f"{provider.upper()} API 키가 입력되지 않았습니다. 좌측 입력란에 API 키를 입력하거나 Render 환경변수에 등록해 주세요."
 
-    sys_prompt = (
-        "당신은 월가 기관급 파이썬/Streamlit 스윙 퀀트 수석 엔지니어입니다. "
-        "사용자가 요청한 문제점을 해결하거나 팀 성능을 개선한 전체 파이썬 코드를 반환하십시오. "
-        "반드시 문법 오류가 없는 순수 파이썬 코드만 ```python ... ``` 블록 안에 작성하고, "
-        "Look-ahead Bias(미래 데이터 참조)를 절대 포함하지 마십시오."
-    )
-    if (
-        str(target_file).startswith("agent_custom_")
-        or "custom" in str(target_file).lower()
-        or any(k in str(issue_description).lower() for k in ("new agent", "신규 팀", "팀 추가", "커스텀 팀"))
-    ):
-        sys_prompt += (
-            "\n\n[커스텀 팀 표준 템플릿 - 반드시 이 시그니처와 dict 반환 형식을 따르십시오]\n"
-            "```python\n"
-            "import numpy as np\n"
-            "import pandas as pd\n\n"
-            "def run_agent(ticker: str, hist, current_price: float) -> dict:\n"
-            "    # hist: pandas DataFrame (일봉 OHLCV: Open, High, Low, Close, Volume)\n"
-            "    # return: 다음 형식의 dict를 반드시 반환하십시오.\n"
-            "    return {\n"
-            "        'name': 'CustomTeamName',\n"
-            "        'score': 0.0,  # -100.0 ~ +100.0 사이 float\n"
-            "        'status': 'NEUTRAL',  # 'BULLISH' | 'BEARISH' | 'NEUTRAL' | 'DANGER'\n"
-            "        'summary': '핵심 한 줄 요약 (30자 이내)',\n"
-            "        'details': {},\n"
-            "    }\n"
-            "```\n"
-            "위 `def run_agent(ticker: str, hist, current_price: float) -> dict:` 시그니처와 dict 키 형식을 반드시 준수하십시오. "
-            "pandas, numpy, math 외의 외부 라이브러리는 import하지 마십시오."
+    if patch_mode:
+        sys_prompt = (
+            "당신은 70만 자 규모의 파이썬/Streamlit 퀀트 앱을 안전하게 수술하는 시니어 엔지니어입니다. "
+            "파일 전체를 다시 출력하지 말고, 문제를 고치는 최소한의 '정확한 교체 패치'만 JSON으로 반환하십시오.\n"
+            "출력 형식(JSON 외 다른 텍스트 금지):\n"
+            '{"summary": "한 줄 요약", "patches": [{"find": "원본에 있는 그대로의 코드", "replace": "새 코드"}]}\n'
+            "규칙:\n"
+            "1) find는 원본 파일에서 공백·들여쓰기·줄바꿈까지 100% 동일하게 복사하고, 파일 내에서 정확히 1회만 등장하도록 주변 3~10줄을 포함하십시오.\n"
+            "2) replace에는 수정된 전체 블록을 작성하십시오. 생략 기호(...)나 주석으로 코드를 숨기지 마십시오.\n"
+            "3) 변경 지점이 여러 곳이면 patches 배열에 여러 항목을 넣으십시오.\n"
+            "4) Look-ahead Bias(미래 데이터 참조)를 절대 포함하지 마십시오.\n"
+            "5) 설명, 인사말, 코드펜스 없이 JSON 객체 하나만 출력하십시오."
         )
-    user_prompt = (
-        f"[대상 파일]: {target_file}\n"
-        f"[발견된 문제 / 수정 요청사항]:\n{issue_description}\n\n"
-        f"[현재 코드 (일부 또는 전체)]:\n```python\n{current_code[:14000]}\n```\n\n"
-        "위 문제를 정확히 수정한 파이썬 코드를 ```python 코드블록으로 작성해 주세요."
-    )
+        user_prompt = (
+            f"[대상 파일]: {target_file}\n"
+            f"[발견된 문제 / 수정 요청사항]:\n{issue_description}\n\n"
+            f"[현재 파일 전체 코드 ({len(current_code):,}자)]:\n{current_code}\n\n"
+            "위 파일에서 문제를 해결하는 최소 패치만 JSON으로 반환하십시오."
+        )
+    else:
+        sys_prompt = (
+            "당신은 월가 기관급 파이썬/Streamlit 스윙 퀀트 수석 엔지니어입니다. "
+            "사용자가 요청한 문제점을 해결하거나 팀 성능을 개선한 전체 파이썬 코드를 반환하십시오. "
+            "반드시 문법 오류가 없는 순수 파이썬 코드만 ```python ... ``` 블록 안에 작성하고, "
+            "Look-ahead Bias(미래 데이터 참조)를 절대 포함하지 마십시오."
+        )
+        if (
+            str(target_file).startswith("agent_custom_")
+            or "custom" in str(target_file).lower()
+            or any(k in str(issue_description).lower() for k in ("new agent", "신규 팀", "팀 추가", "커스텀 팀"))
+        ):
+            sys_prompt += (
+                "\n\n[커스텀 팀 표준 템플릿 - 반드시 이 시그니처와 dict 반환 형식을 따르십시오]\n"
+                "```python\n"
+                "import numpy as np\n"
+                "import pandas as pd\n\n"
+                "def run_agent(ticker: str, hist, current_price: float) -> dict:\n"
+                "    # hist: pandas DataFrame (일봉 OHLCV: Open, High, Low, Close, Volume)\n"
+                "    # return: 다음 형식의 dict를 반드시 반환하십시오.\n"
+                "    return {\n"
+                "        'name': 'CustomTeamName',\n"
+                "        'score': 0.0,  # -100.0 ~ +100.0 사이 float\n"
+                "        'status': 'NEUTRAL',  # 'BULLISH' | 'BEARISH' | 'NEUTRAL' | 'DANGER'\n"
+                "        'summary': '핵심 한 줄 요약 (30자 이내)',\n"
+                "        'details': {},\n"
+                "    }\n"
+                "```\n"
+                "위 `def run_agent(ticker: str, hist, current_price: float) -> dict:` 시그니처와 dict 키 형식을 반드시 준수하십시오. "
+                "pandas, numpy, math 외의 외부 라이브러리는 import하지 마십시오."
+            )
+        user_prompt = (
+            f"[대상 파일]: {target_file}\n"
+            f"[발견된 문제 / 수정 요청사항]:\n{issue_description}\n\n"
+            f"[현재 코드 (전체 {len(current_code):,}자)]:\n```python\n{current_code}\n```\n\n"
+            "위 문제를 정확히 수정한 '파일 전체' 파이썬 코드를 ```python 코드블록으로 작성해 주세요. "
+            "일부만 발췌하거나 생략 기호(...)를 쓰지 마십시오."
+        )
 
     try:
         if provider == "gemini":
-            # ⭐ [404 원천 방지] 구형 모델명(gemini-2.5-pro 등) 호출 시 최신 gemini-3.1-pro-preview로 자동 매핑 및 404 발생 시 gemini-2.5-flash로 즉시 폴백
-            if model_id in ("gemini-2.5-pro", "gemini-1.5-pro", "gemini-pro"):
-                model_id = "gemini-3.1-pro-preview"
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={eff_key}"
+            # ⭐ [404 원천 방지] 2.5 Flash는 신규 키 접근 제한으로 404가 발생하므로,
+            #    GA 모델(gemini-3.8-flash)을 1순위로 호출하고 404일 때만 지원 모델로 순차 폴백합니다.
+            candidates = []
+            for _m in (model_id, *(route_info.get("fallback_models") or ())):
+                _m = str(_m or "").strip()
+                if _m and _m not in candidates:
+                    candidates.append(_m)
+            # 전체 재작성은 사고(thinking) 토큰까지 포함해 넉넉히, 패치 모드는 JSON 출력에 충분한 32K로 제한
+            gen_cfg = {"temperature": 0.15, "maxOutputTokens": (32768 if patch_mode else 65536)}
+            if patch_mode:
+                gen_cfg["responseMimeType"] = "application/json"
             payload = {
                 "contents": [{"parts": [{"text": sys_prompt + "\n\n" + user_prompt}]}],
-                "generationConfig": {"temperature": 0.15, "maxOutputTokens": 8192},
+                "generationConfig": gen_cfg,
             }
-            resp = _req.post(url, json=payload, timeout=45)
-            if resp.status_code == 404 and model_id != "gemini-2.5-flash":
-                fallback_model = "gemini-2.5-flash"
-                url_fb = f"https://generativelanguage.googleapis.com/v1beta/models/{fallback_model}:generateContent?key={eff_key}"
-                resp = _req.post(url_fb, json=payload, timeout=45)
-            if resp.status_code != 200:
-                return False, f"Gemini API 호출 오류 (HTTP {resp.status_code}): {resp.text[:250]}"
+            resp = None
+            tried = []
+            last_404 = ""
+            for idx, cand in enumerate(candidates):
+                tried.append(cand)
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{cand}:generateContent"
+                headers = {"Content-Type": "application/json", "x-goog-api-key": eff_key}
+                try:
+                    resp = _req.post(url, headers=headers, json=payload, timeout=(240 if patch_mode else 120))
+                except Exception as net_ex:
+                    return False, f"Gemini API 네트워크 예외(model={cand}): {net_ex}"
+                if resp.status_code == 200:
+                    model_id = cand
+                    break
+                if resp.status_code == 404:
+                    last_404 = resp.text[:240]
+                    if idx < len(candidates) - 1:
+                        continue
+                    break
+                return False, f"Gemini API 호출 오류 (HTTP {resp.status_code}, model={cand}): {resp.text[:300]}"
+            if resp is None or resp.status_code != 200:
+                return False, (
+                    f"Gemini 모델을 찾을 수 없습니다(HTTP 404). 시도한 모델: {', '.join(tried)}. "
+                    f"마지막 응답: {last_404}. GEMINI_API_KEY가 Gemini 3.8 Flash를 지원하는지 확인해 주세요."
+                )
+
             data = resp.json()
-            candidates = data.get("candidates") or []
-            if not candidates:
-                return False, "Gemini 응답에 코드가 포함되지 않았습니다."
-            raw_txt = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+            candidates_resp = data.get("candidates") or []
+            if not candidates_resp:
+                return False, f"Gemini 응답에 코드가 포함되지 않았습니다: {str(data)[:250]}"
+            finish_reason = str(candidates_resp[0].get("finishReason") or "")
+            if finish_reason == "MAX_TOKENS":
+                return False, "🚨 AI 출력이 토큰 한도(MAX_TOKENS)에서 잘려 안전을 위해 적용하지 않았습니다. 요청 범위를 줄여 다시 시도해 주세요."
+            parts = (candidates_resp[0].get("content") or {}).get("parts") or []
+            raw_txt = "".join(str(p.get("text") or "") for p in parts)
         else:
+            if patch_mode:
+                return False, (
+                    f"대용량 파일({len(current_code):,}자)은 DeepSeek의 출력/컨텍스트 한도로 안전한 전체 수술이 어렵습니다. "
+                    "Gemini 3.8 Flash(무료 라우팅)를 선택해 주세요."
+                )
             url = "https://api.deepseek.com/chat/completions"
             headers = {"Authorization": f"Bearer {eff_key}", "Content-Type": "application/json"}
             payload = {
@@ -9239,14 +9418,25 @@ def call_ai_auto_fixer_llm(
                 "temperature": 0.15,
                 "max_tokens": 8192,
             }
-            resp = _req.post(url, headers=headers, json=payload, timeout=55)
+            resp = _req.post(url, headers=headers, json=payload, timeout=120)
             if resp.status_code != 200:
                 return False, f"DeepSeek API 호출 오류 (HTTP {resp.status_code}): {resp.text[:250]}"
             data = resp.json()
-            raw_txt = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
+            choice = (data.get("choices") or [{}])[0]
+            if str(choice.get("finish_reason") or "") == "length":
+                return False, "🚨 AI 출력이 토큰 한도(length)에서 잘려 안전을 위해 적용하지 않았습니다. 요청 범위를 줄여 다시 시도해 주세요."
+            raw_txt = (choice.get("message") or {}).get("content", "")
 
-        m = re.search(r"```(?:python)?\s*(.*?)```", raw_txt, re.DOTALL)
-        extracted = m.group(1).strip() if m else raw_txt.strip()
+        if not (raw_txt or "").strip():
+            return False, "AI 응답이 비어 있습니다. 잠시 후 다시 시도해 주세요."
+
+        if patch_mode:
+            ok_patch, patch_result = _apply_ai_patches(current_code, raw_txt)
+            if not ok_patch:
+                return False, f"대용량 파일 패치 적용 실패(원본 100% 보존): {patch_result}"
+            return True, patch_result
+
+        extracted = _strip_code_fence(raw_txt)
         if not extracted:
             return False, "AI 응답에서 파이썬 코드를 추출하지 못했습니다."
         return True, extracted
@@ -10567,7 +10757,7 @@ def render_tab_audit(usd_krw):
                 ic = "✅ 승인됨" if h["status"] == "APPROVED" else "❌ 거절됨"
                 st.markdown(f"- **{ic}** | **{h['agent_name']} 팀** ({h['detected_date']}) → {h['proposed_fix']}")
 
-    # ⭐ [21.0 NEW] AI AS 자동수술 & 먹통방지 자가치유 센터 (Gemini Flash/4 Argon · DeepSeek V3/R1 + .bak 안전백업 + GitHub 자동배포)
+    # ⭐ [21.0 NEW] AI AS 자동수술 & 먹통방지 자가치유 센터 (Gemini 3.8 Flash/3.1 Pro · DeepSeek V3/R1 + .bak 안전백업 + GitHub 자동배포)
     st.markdown("---")
     render_html("""
     <div style="background:linear-gradient(135deg,#0f172a,#1e1b4b 60%,#0f172a); border:1.5px solid #38bdf8; border-radius:14px; padding:16px 18px; margin-top:10px; margin-bottom:12px;">
@@ -10576,8 +10766,10 @@ def render_tab_audit(usd_krw):
             <span class="badge badge-teal">무조건 .bak 백업 ➡️ AST 문법/보안 테스트 ➡️ 덮어쓰기 & GitHub 자동배포</span>
         </div>
         <div style="font-size:11.5px; color:#cbd5e1; line-height:1.55;">
-            • <b>비용 최적화 라우팅:</b> 일반 파라미터/임계값/단순 로직 수정은 <b>🟢 무료 최신 모델(Gemini Flash / DeepSeek V3)</b>을 선택하고,
-              복합 아키텍처 수술이나 신규 팀 생성·먹통 복구는 <b>🟣 유료 고급 모델(Gemini 4 Argon / DeepSeek R1 · 하루 5회 하드캡 보호)</b>을 선택하십시오.<br>
+            • <b>비용 최적화 라우팅:</b> 일반 파라미터/임계값/단순 로직 수정은 <b>🟢 무료 최신 모델(Gemini 3.8 Flash / DeepSeek V3)</b>을 선택하고,
+              복합 아키텍처 수술이나 신규 팀 생성·먹통 복구는 <b>🟣 유료 고급 모델(Gemini 3.1 Pro Preview / DeepSeek R1 · 하루 5회 하드캡 보호)</b>을 선택하십시오.<br>
+            • <b>대용량 파일 안전 수술:</b> 10만 자를 넘는 파일(예: `app.py`)은 전체 코드를 다시 받지 않고 <b>AI가 반환한 정확한 find/replace 패치만 원본에 적용</b>합니다. 패치가 1회 일치하지 않거나 출력이 잘리면 원본을 100% 보존하고 자동 취소합니다.<br>
+            • <b>낡은 코드 재적용 차단:</b> AI 호출이 실패(404 등)하면 이전에 생성된 코드와 편집기 내용을 즉시 폐기하며, 생성 시점 이후 원본이 바뀐 경우에도 덮어쓰기를 차단합니다.<br>
             • <b>안전 보장:</b> AI가 제안한 코드는 <b>① 원본 `.bak` 자동 백업 ➡️ ② `.tmp` 임시파일 생성 ➡️ ③ 파이썬 AST 문법·보안 검증 통과 시에만 덮어쓰기</b>되며, 문제 발생 시 1초 만에 직전 백업본으로 롤백됩니다.
         </div>
     </div>""")
@@ -10619,7 +10811,7 @@ def render_tab_audit(usd_krw):
             key="as_api_key_input",
             help=" 브라우저를 닫으면 즉시 소멸되며 DB에 저장되지 않습니다.",
         )
-        st.caption(f"🛡️ 유료 고급 모델(Pro/Argon/R1) 오늘 사용량: **{st.session_state['ai_pro_calls_today']} / 5회** (비용 폭탄 방지 하드캡)")
+        st.caption(f"🛡️ 유료 고급 모델(Gemini 3.1 Pro / DeepSeek R1) 오늘 사용량: **{st.session_state['ai_pro_calls_today']} / 5회** (비용 폭탄 방지 하드캡)")
 
     with c_as2:
         default_issue = last_crash if last_crash else (
@@ -10637,12 +10829,14 @@ def render_tab_audit(usd_krw):
             if st.button("🤖 1단계: AI에게 수정 코드 제안받기", type="primary", use_container_width=True, key="btn_as_call_ai"):
                 r_info = AI_MODEL_ROUTING_TABLE[route_k]
                 if r_info["tier"] == "PAID_PRO" and st.session_state["ai_pro_calls_today"] >= 5:
-                    st.error("🚨 오늘 유료 고급 모델 호출 한도(5회)에 도달했습니다. 무료 최신 모델(Gemini Flash / DeepSeek V3)을 선택해 주세요.")
+                    st.error("🚨 오늘 유료 고급 모델 호출 한도(5회)에 도달했습니다. 무료 최신 모델(Gemini 3.8 Flash / DeepSeek V3)을 선택해 주세요.")
                 else:
                     cur_src = ""
-                    if os.path.exists(target_f):
+                    # ⭐ 읽는 파일과 실제로 덮어쓸 파일(target_f_path)을 반드시 일치시켜 '옛날 사본'을 읽는 사고를 방지
+                    disk_path = target_f_path if os.path.exists(target_f_path) else target_f
+                    if os.path.exists(disk_path):
                         try:
-                            with open(target_f, "r", encoding="utf-8") as f_r:
+                            with open(disk_path, "r", encoding="utf-8") as f_r:
                                 cur_src = f_r.read()
                         except Exception:
                             cur_src = ""
@@ -10653,9 +10847,19 @@ def render_tab_audit(usd_krw):
                             st.session_state["ai_pro_calls_today"] += 1
                         st.session_state["as_generated_code"] = res_ai
                         st.session_state["as_generated_target"] = target_f
+                        st.session_state["as_generated_base_sha"] = _sha256_text(cur_src)
+                        st.session_state["as_generated_model"] = r_info["model_id"]
+                        st.session_state["as_generated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        # ⭐ 생성할 때마다 편집기 위젯 키를 새로 발급 -> 이전에 화면에 남아 있던 코드가 재적용되는 것을 원천 차단
+                        st.session_state["as_generation_seq"] = int(st.session_state.get("as_generation_seq", 0)) + 1
                         st.success(f"✅ AI 수정 코드 생성 완료! 아래 코드 편집기에서 확인 후 [2단계: 백업 후 안전 덮어쓰기] 또는 [3단계: GitHub 자동 배포]를 누르세요.")
                     else:
-                        st.warning(res_ai)
+                        # ⭐ 404/실패 시 이전에 생성된 코드를 즉시 폐기 -> '옛날 코드'가 그대로 덮어쓰이는 악순환 차단
+                        for _k in ("as_generated_code", "as_generated_target", "as_generated_base_sha", "as_generated_model", "as_generated_at"):
+                            st.session_state.pop(_k, None)
+                        st.session_state["as_generation_seq"] = int(st.session_state.get("as_generation_seq", 0)) + 1
+                        st.error(res_ai)
+                        st.info("이전에 생성된 코드가 남아 재적용되는 것을 막기 위해 편집기를 현재 원본으로 초기화했습니다.")
         with b_rest:
             if st.button(f"🔄 `{target_f}.bak` 직전 백업본으로 즉시 복구(롤백)", use_container_width=True, key="btn_as_restore_bak"):
                 ok_bk, msg_bk = restore_file_from_backup(target_f_path)
@@ -10666,55 +10870,102 @@ def render_tab_audit(usd_krw):
 
     with st.expander("🔬 2단계 & 3단계: 코드 검증 · 로컬/Render 안전 덮어쓰기(.bak 백업) · GitHub 자동 커밋/배포", expanded=bool(st.session_state.get("as_generated_code"))):
         loaded_file_src = ""
-        if os.path.exists(target_f):
+        disk_path = target_f_path if os.path.exists(target_f_path) else target_f
+        if os.path.exists(disk_path):
             try:
-                with open(target_f, "r", encoding="utf-8") as f_cur:
+                with open(disk_path, "r", encoding="utf-8") as f_cur:
                     loaded_file_src = f_cur.read()
             except Exception:
                 loaded_file_src = ""
-        init_editor_code = st.session_state.get("as_generated_code") or loaded_file_src
+        # ⭐ 대상 파일이 바뀌면 이전 파일용 생성 코드/편집 내용을 절대 재사용하지 않음
+        gen_target = st.session_state.get("as_generated_target")
+        gen_code = st.session_state.get("as_generated_code") if gen_target == target_f else None
+        init_editor_code = gen_code or loaded_file_src
+        # ⭐ 생성 회차마다 새 위젯 키를 사용 -> Streamlit이 이전 값을 계속 보여주는 '낡은 코드' 문제 원천 차단
+        editor_seq = int(st.session_state.get("as_generation_seq", 0))
+        editor_key = f"as_code_editor_area::{target_f}::{editor_seq}"
         edited_code = st.text_area(
             f"📄 `{target_f}` 적용 대기 코드 (AI가 생성한 코드 또는 직접 붙여넣기 가능 — 적용 전 AST 문법·보안 자동 검사)",
             value=init_editor_code,
             height=260,
-            key="as_code_editor_area",
+            key=editor_key,
         )
+        if gen_code:
+            st.caption(
+                f"🧠 생성 모델: `{st.session_state.get('as_generated_model', '-')}` · "
+                f"생성 시각: {st.session_state.get('as_generated_at', '-')} · 대상: `{gen_target}`"
+            )
+        force_apply = False
+        if gen_target == target_f and st.session_state.get("as_generated_base_sha"):
+            force_apply = st.checkbox(
+                "⚠️ 생성 시점 이후 원본이 바뀌었어도 강제 적용 (권장하지 않음)",
+                value=False,
+                key=f"as_force_apply::{target_f}::{editor_seq}",
+            )
         c_dep1, c_dep2 = st.columns(2)
         with c_dep1:
             if st.button(f"🛡️ 2단계: `{target_f}` 무조건 백업(.bak) 후 테스트 & 안전 덮어쓰기", type="primary", use_container_width=True, key="btn_as_safe_apply"):
-                if not os.path.exists(target_f_path):
+                disk_now = ""
+                if os.path.exists(target_f_path):
                     try:
-                        with open(target_f_path, "w", encoding="utf-8") as f_init:
-                            f_init.write("# New Agent File\n")
+                        with open(target_f_path, "r", encoding="utf-8") as f_now:
+                            disk_now = f_now.read()
                     except Exception:
-                        pass
-                ok_fx, msg_fx = safe_auto_fix(target_f_path, edited_code)
-                if ok_fx:
-                    st.success(msg_fx)
+                        disk_now = ""
+                base_sha = st.session_state.get("as_generated_base_sha") if gen_target == target_f else None
+                if disk_now and edited_code.strip() == disk_now.strip():
+                    st.info("현재 파일과 편집기 내용이 완전히 동일합니다. 불필요한 덮어쓰기를 건너뜁니다.")
+                elif base_sha and disk_now and _sha256_text(disk_now) != base_sha and not force_apply:
+                    st.error(
+                        "🚨 생성 시점 이후 원본 파일이 변경되었습니다. 지금 적용하면 최신 수정 내용을 덮어쓸 수 있습니다. "
+                        "[1단계]를 다시 실행해 최신 코드로 재생성하거나, 정말 덮어쓰려면 위 '강제 적용'을 체크하세요."
+                    )
                 else:
-                    st.error(msg_fx)
+                    if not os.path.exists(target_f_path):
+                        try:
+                            with open(target_f_path, "w", encoding="utf-8") as f_init:
+                                f_init.write("# New Agent File\n")
+                        except Exception:
+                            pass
+                    ok_fx, msg_fx = safe_auto_fix(target_f_path, edited_code)
+                    if ok_fx:
+                        st.success(msg_fx)
+                    else:
+                        st.error(msg_fx)
         with c_dep2:
             gh_repo = st.text_input("GitHub 저장소 (예: `내아이디/gangjin-ai`)", value=os.getenv("GITHUB_REPO", ""), key="as_gh_repo")
             gh_tok = st.text_input("GitHub Token (`ghp_...` · 미입력 시 환경변수 GITHUB_TOKEN 사용)", type="password", key="as_gh_tok")
             gh_msg = st.text_input("커밋 메시지", value=f"AI AS Auto-Fix: update {target_f}", key="as_gh_msg")
             if st.button(f"🚀 3단계: GitHub에 `{target_f}` 자동 커밋 & Render 자동 재배포", use_container_width=True, key="btn_as_gh_push"):
-                # 먼저 AST 문법 검사 통과 여부 확인
-                try:
-                    import ast as _ast
-                    _ast.parse(edited_code)
-                    ok_gh, msg_gh = push_fixed_code_to_github(
-                        file_path_in_repo=target_f,
-                        new_code=edited_code,
-                        commit_message=gh_msg,
-                        github_token=gh_tok,
-                        repo_name=gh_repo,
-                    )
-                    if ok_gh:
-                        st.success(msg_gh)
-                    else:
-                        st.warning(msg_gh)
-                except SyntaxError as e_syn:
-                    st.error(f"🚨 문법 오류가 있는 코드는 GitHub에 푸시할 수 없습니다 (자동 차단): {e_syn}")
+                # ⭐ 생성 시점 이후 원본이 바뀌었으면 GitHub/Render 자동배포도 중단 (낡은 코드 배포 방지)
+                gh_disk_now = ""
+                if os.path.exists(target_f_path):
+                    try:
+                        with open(target_f_path, "r", encoding="utf-8") as f_gh:
+                            gh_disk_now = f_gh.read()
+                    except Exception:
+                        gh_disk_now = ""
+                gh_base_sha = st.session_state.get("as_generated_base_sha") if gen_target == target_f else None
+                if gh_base_sha and gh_disk_now and _sha256_text(gh_disk_now) != gh_base_sha and not force_apply:
+                    st.error("🚨 생성 시점 이후 원본 파일이 변경되어 GitHub 배포를 중단했습니다. [1단계]를 다시 실행해 최신 코드로 재생성하거나 '강제 적용'을 체크하세요.")
+                else:
+                    # 먼저 AST 문법 검사 통과 여부 확인
+                    try:
+                        import ast as _ast
+                        _ast.parse(edited_code)
+                        ok_gh, msg_gh = push_fixed_code_to_github(
+                            file_path_in_repo=target_f,
+                            new_code=edited_code,
+                            commit_message=gh_msg,
+                            github_token=gh_tok,
+                            repo_name=gh_repo,
+                        )
+                        if ok_gh:
+                            st.success(msg_gh)
+                        else:
+                            st.warning(msg_gh)
+                    except SyntaxError as e_syn:
+                        st.error(f"🚨 문법 오류가 있는 코드는 GitHub에 푸시할 수 없습니다 (자동 차단): {e_syn}")
 
 
 # ==============================================================================
