@@ -1,3 +1,37 @@
+# ==============================================================================
+# GANGJIN AI TRADER PRO — App (21.0 FINAL) — Institutional Fund-Quant · 11-Sector Flow Radar · AI AS Self-Healing Edition
+# - ⭐ [21.0 NEW] 기관급 펀드 퀀트 동적 가중치 & 11대 섹터 자금흐름 레이더 & AI AS 자동수술/GitHub 배포 완전체:
+#     · [Fund-Quant Chief] 확률적 레짐 소프트 블렌딩(Soft Blending) + 16개 팀 실시간 정답률 메타러닝 가중치 + 섹터 자금쏠림 동적 부스팅 + 쿼터 켈리(Quarter-Kelly) 사이징 + B급 관찰(WATCH) 3단계 분류
+#     · [11-Sector Money Flow Radar] 나스닥/미국 11대 GICS 섹터 ETF(XLK·XLV·XLF·XLE·XLI·XLC·XLY·XLP·XLU·XLB·XLRE) 1주/1개월 달러 거래대금 자금 유입·유출 TOP 3 레이더 카드 (BreadthRS 팀 통합)
+#     · [AI AS 자동수술 & 먹통방지 센터] 무료 최신 모델(Gemini Flash / DeepSeek V3) vs 유료 고급 모델(Gemini 4 Argon / DeepSeek R1, 일 5회 하드캡) 동적 라우팅 + 자동 .bak 백업 + AST 보안/문법 검증 후 안전 덮어쓰기(safe_auto_fix) + GitHub 자동 커밋/푸시(Render Auto-Deploy 연동)
+#     · [Render 2GB + 영구 디스크(/var/data) & SQLite WAL] 프로세스 재시작 시에도 DB/백업 보존 + WAL 동시성 잠금 방지 + 50건 시뮬레이터 실제 에이전트 함수(Chart·Master·Macro·ExtraMasters·Chief) 연동
+# - ⭐ [20.0 NEW] 자율 진화형 컨트롤 타워 & EOD 모의매매 & 16개 팀 감사 시스템 탑재 (총 10개 탭 완전체):
+#     · [Tab 8 / agent_paper.py] 🤖 모의매매팀 EOD 시뮬레이션: T일 종가 시그널 -> T+1일 시가 진입 -> 일봉 고/저가 청산 (Look-ahead Bias 0% + 50건 고속 검증기)
+#     · [Tab 9 / agent_audit.py] 🔍 16개 팀 정밀 감사 센터: 매매별 16개 팀 정답률 추적 -> 3회 연속 오답 팀 자동 적발 및 맞춤 수정 요청서(±20% 안전캡) 발행
+#     · [Tab 10 / agent_evolution.py] 🧬 매니저 진화 연구소: 최소 50건 배치 통계 검증(95% 신뢰구간·p-value) + 15건 조기중단 + 월가 대가(와이코프·라쉬케·윌리엄스·브룩스) AST 샌드박스 장착 + 챔피언/챌린저 승격·롤백
+# - ⭐ [19.0 NEW] 스윙 트레이딩 특화 3대 전담팀 추가 (총 16개 전담팀 + Chief AI + Journal 완전체):
+#     · [Agent 14] 🌐 글로벌 마켓 코릴레이션 (Intermarket): 달러인덱스(DXY/UUP)·구리/금 비율(Dr. Copper)·미국채 장단기 금리·중국(FXI)·유럽(VGK) 자산 간 디커플링 및 외국인 수급 이탈 감지
+#     · [Agent 15] 🗓️ 매크로 경제 이벤트 캘린더 (MacroEvent): FOMC·CPI·비농업고용(NFP)·PCE·파월 연설 공식 일정 + 실시간 뉴스 D-Day/D-1 추적 -> 발표 직전 '진입 보류(Veto #10)' 자동 발동
+#     · [Agent 16] 🎯 소셜 센티멘트 & 리테일 수급 (SocialSentiment): Reddit(WSB/stocks)·Google 버즈·거래량 폭발 결합 분석 -> 기관/내부자 매집 + 개미 관심 폭발 시 슈팅 가산점 & 개미 광기 버블 경보
+# - ⭐ [18.0 NEW] [Agent 13] 시장 호흡 & 상대강도 (Market Breadth & RS) 전담팀 탑재:
+#     · 시장 호흡(Breadth 0~100%): RSP(동일가중) vs SPY(시총가중) & VTI 스프레드 + 섹터 확산도로 장세 협소화 정밀 감지
+#     · 상대 강도(RS): 종목 3개월/1개월 수익률 vs SPY 초과수익률 + SPY 하락일 방어력(Resilience) + 오닐 RS Rating(1~99)
+#     · 섹터 로테이션: XLK(기술)·XLE(에너지)·XLF(금융)·XLV(헬스케어)·XLI(산업재)·XLC(통신)·XLY(소비재) 실시간 자금 유입 순위
+#     · Chief AI Veto #8 추가: 시장 호흡 극단적 불량(Breadth < 30%) 시 신규 스윙 매수 자동 금지
+#     · 주도주 가산점: 시장 대비 강한 주도주(RS > 0)는 Chart/Master 점수 자동 가산(+4~+15점)
+# - ⭐ 실시간 시세 동기화 엔진 탑재 (Nasdaq / Yahoo 1d·5m / Finnhub / CNBC 교차 검증 + 일봉 실시간 병합)
+# - ⭐ [16.4] 뉴스 4중 수집 (Finnhub -> Yahoo 공식 RSS -> Google RSS -> Nasdaq News API)
+# - ⭐ [16.4] 전 섹터(방산·우주·AI·반도체·바이오·전기차·크립토·금융·SEC공시) 호재·악재 사전 완비
+# - ⭐ [16.4] 단어 경계(Regex) 정밀 매칭으로 'mission->miss', 'execute->cut', 'award->war' 오탐 원천 차단
+# - ⭐ [16.4] 과거 호재·악재 무조건 선별 패스 (72h 하드 컷오프 + 48h 시그널 컷오프 + 회고성 기사/역행 호재 패스)
+# - ⭐ [16.4] 중대 악재 발생 시 RSI 과매도 역발상(PANIC BUY) 자동 차단 (떨어지는 칼날 진입 방지)
+# - ⭐ [16.5] 실적발표일 6중 정밀 탐지 엔진 (Nasdaq API -> Finnhub -> CNBC -> Yahoo 다중포맷 -> 뉴스PR 추출 -> KNOWN_EARNINGS + 분기주기 자동추정)
+# - ⭐ [16.5-R1] 실시간 봉 병합 로직 안전화 + 뉴스 수집 10분 캐시 분리 + 오탐 방지 문구 정밀화
+# - ⭐ [17.0 NEW] 12개 전문 에이전트 멀티팀 통합 (Data·Chart·Macro·Master·News·Policy·Options·Onchain·Supply·Squeeze·Insider·Institutional)
+# - ⭐ [17.0 NEW] Chief AI Manager (달리오 레짐 가중치 + 소로스 출구 + 튜더존스 200일선 + 드러켄밀러 변동성 사이징 + 8단계 기관급 Veto 거부권)
+# - ⭐ [17.0 NEW] ThreadPoolExecutor 병렬 실행 엔진 탑재 (12개 팀 동시 고속 연산 및 0ms 섹터 사전 매핑으로 체감 지연 제로화)
+# - ⭐ [17.0 NEW] Journal Agent 탑재 (매매일지 8대 잘못된 매매 습관/심리 편향 자동 지적 + 대가 기법별·심리별·종목별 승률 리더보드)
+# ==============================================================================
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -21,6 +55,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import requests
 
+# ⭐️ 데이터 이중화를 위한 라이브러리 Import
 try:
     import xfinance as xf
     HAS_XFINANCE = True
@@ -41,6 +76,10 @@ try:
 except ImportError:
     HAS_AUTOREFRESH = False
 
+
+# ==============================================================================
+# 1) CONFIG (전 섹터 호재·악재 키워드 사전 완비)
+# ==============================================================================
 CFG = {
     "cache": {
         "live_quote": 20, "history": 60, "indices": 30, "top_bar": 30, "market_cap": 3600,
@@ -77,9 +116,9 @@ CFG = {
         "vix_crisis": 23.0, "vix_calm": 18.0,
     },
     "news": {
-
+        # ⭐ 1. 확정적 수주·계약·임상승인·인수합병·지수편입 호재 (단독 매칭 시 즉시 호재 인정)
         "contract_strong": (
-
+            # 방산·우주·정부조달·일반 대형 수주
             "contract award", "awarded", "wins contract", "won contract", "secures", "secured",
             "lands", "selected for", "downselect", "sole source", "sole-source", "task order",
             "follow-on", "idiq", "program of record", "full-rate production", "ota agreement",
@@ -90,25 +129,25 @@ CFG = {
             "new deal", "major deal", "signs deal", "signed deal", "signs agreement",
             "inks deal", "contract value rises", "contract modification", "ceiling increase",
             "backlog rises", "record backlog", "successful launch", "faa license", "fcc approval",
-
+            # AI·반도체·데이터센터·네오클라우드·전력
             "hyperscaler", "ai deal", "ai cloud", "gpu cluster", "hpc contract", "colocation deal",
             "hosting agreement", "power purchase agreement", "ppa", "mw expansion", "gw pipeline",
             "energized", "energizes", "design win", "tape-out", "mass production", "sovereign ai",
             "ai factory",
-
+            # 바이오·제약·의료기기 (FDA 승인·임상 성공·기술수출)
             "fda approval", "fda approves", "fda cleared", "fda clearance", "510(k)",
             "de novo", "breakthrough therapy", "fast track", "priority review", "orphan drug",
             "accelerated approval", "positive topline", "met primary endpoint",
             "meets primary endpoint", "statistically significant", "phase 2 success",
             "phase 3 success", "positive phase", "ema approval", "licensing deal",
             "milestone payment", "royalty deal",
-
+            # 전기차·모빌리티·양자·크립토·M&A·지수편입
             "fsd approval", "robotaxi", "quantum advantage", "qubit milestone", "hashrate record",
             "s&p 500 inclusion", "joins s&p 500", "added to s&p", "nasdaq-100 inclusion",
             "added to nasdaq-100", "russell 1000", "russell 2000 inclusion", "bank charter",
             "buyout", "takeover", "tender offer", "all-cash deal", "spin-off", "spinoff",
         ),
-
+        # ⭐ 조건부 계약 단어 (아래 contract_action_verbs 중 하나와 함께 쓰일 때만 호재로 인정)
         "contract_context": (
             "contract", "deal", "partnership", "agreement", "award", "alliance", "expansion", "order", "orders",
         ),
@@ -118,7 +157,7 @@ CFG = {
             "expanded", "extend", "extends", "extended", "renew", "renews", "renewed",
             "select", "selected", "clinches", "million", "billion",
         ),
-
+        # ⭐ 2. 실적·어닝·가이던스 상향·투자의견 상향·자사주매입·내부자매수 호재
         "earnings_bull": (
             "beat", "beats", "topped", "tops estimates", "beats estimates", "blowout",
             "record revenue", "record earnings", "record profit", "record deliveries",
@@ -132,9 +171,9 @@ CFG = {
             "insider buy", "insider buying", "ceo buys", "cfo buys", "director buys",
             "cluster buying", "regains compliance", "credit upgrade", "short squeeze",
         ),
-
+        # ⭐ 3. 중대 악재 (단 1건만 포착되어도 즉시 위험 경보 & RSI 과매도 역발상 매수 차단!)
         "bad_severe": (
-
+            # 계약 해지·중단·취소·분쟁 (방산·우주·정부·수주 산업)
             "halt", "halts", "halted", "halt purchases", "halts purchases", "halts orders",
             "stop work", "stop-work", "work stoppage", "cancel", "cancels", "cancelled",
             "canceled", "cancellation", "terminate", "terminates", "terminated", "termination",
@@ -146,7 +185,7 @@ CFG = {
             "dispute", "bid protest", "gao protest", "cure notice", "show cause",
             "navy halts", "army halts", "air force halts", "pentagon cuts", "dod cuts", "doge",
             "launch failure", "mission failure", "faa grounding", "grounded", "payload lost",
-
+            # 유상증자·희석·전환사채·내부자 대량매도 (SEC Filings: S-3, Form 144, 424B5, ATM, PIPE)
             "offering", "public offering", "direct offering", "registered direct",
             "shelf registration", "s-3", "form s-3", "424b5", "atm offering", "at-the-market",
             "equity distribution", "equity line", "eloc", "pipe", "private placement",
@@ -154,7 +193,7 @@ CFG = {
             "inducement", "dilution", "dilutive", "secondary offering", "block trade",
             "selling shareholders", "reverse split", "reverse stock split",
             "form 144", "insider sale", "insider selling", "ceo sells", "cfo sells", "files to sell",
-
+            # 소송·수사·회계부정·상장폐지·파산·공매도 리포트
             "lawsuit", "class action", "probe", "subpoena", "sec investigation", "sec probe",
             "sec charges", "doj investigation", "doj probe", "grand jury", "wells notice",
             "ftc lawsuit", "antitrust lawsuit", "cfpb lawsuit", "fdic consent order",
@@ -167,20 +206,20 @@ CFG = {
             "liquidation", "short seller", "short report", "hindenburg", "muddy waters",
             "citron", "culper", "grizzly research", "fuzzy panda", "kerrisdale", "wolfpack",
             "scorpion capital", "bleecker street", "spruce point", "hunterbrook",
-
+            # 바이오·제약 임상실패·FDA 거절
             "complete response letter", "crl", "clinical hold", "partial clinical hold",
             "refusal to file", "fda rejects", "fda rejection", "fda denies", "denies approval", "denies motion to dismiss", "motion to dismiss denied", "fda warning letter", "form 483",
             "boxed warning", "black box warning", "missed primary endpoint", "failed to meet",
             "fails to meet", "did not meet primary endpoint", "trial failure", "phase 2 failure",
             "phase 3 failure", "discontinues trial", "terminates trial", "halted trial",
             "serious adverse", "patient death", "safety signal",
-
+            # 수출통제·해킹·가동중단·주가 폭락·신저가
             "export ban", "chip ban", "entity list", "ransomware", "data breach", "exchange hack",
             "factory shutdown", "production halt", "mass recall", "nhtsa probe",
             "crash", "crashes", "crashed", "plunge", "plunges", "plunged", "plummet", "plummets",
             "52-week low", "all-time low", "record low",
         ),
-
+        # ⭐ 4. 일반 악재 (어닝 미스, 가이던스 하향, 투자의견 하향, 감원, 지연, 리콜 등)
         "bad_strict": (
             "miss", "misses", "missed", "revenue miss", "eps miss", "delivery miss",
             "deliveries fell", "deliveries drop", "comp sales miss", "shortfall",
@@ -211,7 +250,7 @@ CFG = {
             "lowers price target", "order cut", "cuts orders", "budget cut", "funding cut",
             "backlog cut", "supply cut",
         ),
-
+        # ⭐ 5. [16.5-R1] 오탐 방지("denies" 단독 매칭을 정밀 구문으로 교체하여 'FDA denies' 오탐 차단)
         "bad_false_positive": (
             "no orders were stopped", "no orders were canceled", "no orders were cancelled",
             "not cancel", "did not cancel",
@@ -227,26 +266,26 @@ CFG = {
             "unstoppable", "non-stop", "one-stop", "narrowed loss", "cuts loss", "beats loss",
             "smaller-than-expected loss", "without delay", "zero default",
         ),
-
+        # ⭐ 6. 과거 회고성/클릭베이트 스팸 기사 필터 (오늘 날짜로 재발행되어도 즉시 패스)
         "retrospective_skip": (
             "if you invested", "years ago", "months ago", "last month", "last quarter",
             "last year", "in 2022", "in 2023", "in 2024", "in 2025",
             "why .* dropped last", "what happened last", "here's why .* fell in",
             "looking back at", "how much you would have",
         ),
-
+        # ⭐ 7. 거시·지정학 키워드 ('war'->'award', 'ban'->'bank', 'rate'->'operating' 오탐 방지)
         "geo": (
             "war", "wars", "warfare", "tariff", "tariffs", "sanction", "sanctions",
             "inflation", "stagflation", "fomc", "federal reserve", "powell", "rate hike",
             "interest rate", "cpi", "pce", "missile", "iran", "china", "taiwan",
             "export control", "trade war", "geopolitical", "middle east",
         ),
-
+        # ⭐ 8. 과거 호재·악재 선별 패스 기준 시간(시간)
         "recency_hours": {
-            "breaking": 12.0,
-            "fresh": 24.0,
-            "recent": 48.0,
-            "stale_pass": 72.0,
+            "breaking": 12.0,    # 12시간 이내: 초신선 속보 (가중치 1.15)
+            "fresh": 24.0,       # 24시간 이내: 당일 핵심 재료 (가중치 1.00)
+            "recent": 48.0,      # 48시간 이내: 유효 단기 재료 (가중치 0.75)
+            "stale_pass": 72.0,  # 48~72시간: 과거 재료 → 점수/건수 무조건 패스(0.0), 목록에만 참고 표시
         },
         "bad_recent_threshold": 0.7,
         "recovery_pct_forgive": 3.0,
@@ -269,7 +308,7 @@ CFG = {
         "backups": "/var/data/backups" if (os.path.isdir("/var/data") and os.access("/var/data", os.W_OK)) else "data/backups",
     },
     "usd_krw_fallback": 1380.0,
-
+    # ⭐ [16.5] 야후/외부 API 조회 실패 대비 주요 종목 실적 발표일 수동 보정 사전 (2025~2027 분기별 일정)
     "known_earnings": {
         "IREN":  ["2025-02-12", "2025-05-14", "2025-08-28", "2025-11-06", "2026-02-05", "2026-05-07", "2026-08-26", "2026-11-05", "2027-02-10"],
         "NVDA":  ["2025-02-26", "2025-05-28", "2025-08-27", "2025-11-19", "2026-02-25", "2026-05-27", "2026-08-26", "2026-11-18", "2027-02-24"],
@@ -329,6 +368,10 @@ BROWSER_HEADERS = {
     "Pragma": "no-cache",
 }
 
+
+# ==============================================================================
+# 2) LOGGER
+# ==============================================================================
 def _setup_logger() -> logging.Logger:
     logger = logging.getLogger("gangjin")
     if logger.handlers:
@@ -349,8 +392,13 @@ def _setup_logger() -> logging.Logger:
 
 LOG = _setup_logger()
 
+
+# ==============================================================================
+# 3) UTILS & CONSTANTS
+# ==============================================================================
 def render_html(s: str):
     st.markdown("\n".join(l.strip() for l in s.splitlines() if l.strip()), unsafe_allow_html=True)
+
 
 def safe_url(url: str) -> str:
     try:
@@ -360,6 +408,7 @@ def safe_url(url: str) -> str:
     except Exception:
         pass
     return "#"
+
 
 def safe_float(val, default: float = 0.0) -> float:
     try:
@@ -374,11 +423,13 @@ def safe_float(val, default: float = 0.0) -> float:
     except Exception:
         return default
 
+
 def _ny_today_str() -> str:
     try:
         return pd.Timestamp.now(tz="America/New_York").strftime("%Y-%m-%d")
     except Exception:
         return datetime.utcnow().strftime("%Y-%m-%d")
+
 
 def _ny_today_date():
     """미국 동부(뉴욕) 기준 오늘 날짜(date) 반환 — 한국 시간(+9h) 시차로 인한 D-Day 누락 방지."""
@@ -387,12 +438,14 @@ def _ny_today_date():
     except Exception:
         return datetime.utcnow().date()
 
+
 _MONTH_MAP = {
     "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
     "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6,
     "jul": 7, "july": 7, "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9,
     "oct": 10, "october": 10, "nov": 11, "november": 11, "dec": 12, "december": 12,
 }
+
 
 def _extract_dates_from_any(val, ref_today=None) -> list:
     """
@@ -456,18 +509,21 @@ def _extract_dates_from_any(val, ref_today=None) -> list:
     if not s or s.lower() in ("n/a", "none", "null", "nan", "nat", "-", "tbd", "--"):
         return out
 
+    # 1) YYYY-MM-DD or YYYY/MM/DD
     for m in re.finditer(r"\b(20\d{2})[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12]\d|3[01])\b", s):
         try:
             out.append(datetime(int(m.group(1)), int(m.group(2)), int(m.group(3))).date())
         except Exception:
             pass
 
+    # 2) MM/DD/YYYY
     for m in re.finditer(r"\b(0?[1-9]|1[0-2])/(0?[1-9]|[12]\d|3[01])/(20\d{2})\b", s):
         try:
             out.append(datetime(int(m.group(3)), int(m.group(1)), int(m.group(2))).date())
         except Exception:
             pass
 
+    # 3) Month DD, YYYY (예: May 7, 2026 / Nov. 06, 2025 / February 25 2026)
     for m in re.finditer(
         r"\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?(?:,?\s+(20\d{2}))?\b",
         s,
@@ -491,6 +547,7 @@ def _extract_dates_from_any(val, ref_today=None) -> list:
 
     return out
 
+
 def _detect_tod_label(text: str) -> str:
     """실적 발표 시간대(장전 BMO / 장후 AMC) 태그 감지."""
     tl = str(text or "").lower()
@@ -498,7 +555,8 @@ def _detect_tod_label(text: str) -> str:
         return " · 장전(BMO)"
     if any(k in tl for k in ("amc", "after market", "after-hours", "after hours", "after close", "time-after-hours")):
         return " · 장후(AMC)"
-    return ""
+    return "" 
+
 
 def _ts_to_ny_date_str(ts_val) -> str:
     try:
@@ -506,12 +564,14 @@ def _ts_to_ny_date_str(ts_val) -> str:
     except Exception:
         return ""
 
+
 def compute_wilder_rsi(close: pd.Series, period: int = 14) -> pd.Series:
     d = close.diff()
     g = d.where(d > 0, 0.0).ewm(alpha=1.0 / period, adjust=False).mean()
     l = (-d.where(d < 0, 0.0)).ewm(alpha=1.0 / period, adjust=False).mean()
     rs = g / l.replace(0, np.nan)
     return (100.0 - 100.0 / (1.0 + rs)).fillna(50.0)
+
 
 def _hours_since(pub_dt) -> float:
     """뉴스 발행시각으로부터 경과 시간(시간). 파싱 실패 시 9999.0 반환하여 과거 기사로 패스 처리."""
@@ -525,6 +585,7 @@ def _hours_since(pub_dt) -> float:
         return max(0.0, (now - pub_dt).total_seconds() / 3600.0)
     except Exception:
         return 9999.0
+
 
 def _recency_weight(pub_dt) -> float:
     """
@@ -544,6 +605,7 @@ def _recency_weight(pub_dt) -> float:
         return 0.75
     return 0.0
 
+
 def _normalize_title(t: str) -> str:
     """중복 기사 판별용 정규화 — 언론사 접미사 제거 후 소문자·숫자 앞 8단어."""
     raw = str(t or "")
@@ -551,6 +613,7 @@ def _normalize_title(t: str) -> str:
         raw = raw.rsplit(" - ", 1)[0]
     raw = re.sub(r'[^a-z0-9가-힣 ]', ' ', raw.lower())
     return " ".join(raw.split()[:8])
+
 
 def _kw_match(text_lower: str, kw: str) -> bool:
     """
@@ -565,8 +628,10 @@ def _kw_match(text_lower: str, kw: str) -> bool:
         return False
     return bool(re.search(rf"(?<![a-z0-9]){re.escape(k)}(?![a-z0-9])", text_lower))
 
+
 def _any_kw(text_lower: str, kw_tuple: tuple) -> bool:
     return any(_kw_match(text_lower, k) for k in kw_tuple)
+
 
 def _parse_relative_or_date(ago_str: str, created_str: str):
     """Nasdaq News 등의 '3 hours ago', '25 mins ago', 'Oct 21, 2026' 문자열을 datetime으로 변환."""
@@ -596,6 +661,7 @@ def _parse_relative_or_date(ago_str: str, created_str: str):
             pass
     return None
 
+
 SIGNAL_HOLD_LONG   = "🟢 장기 홀딩"
 SIGNAL_HOLD_SHORT  = "🟡 단기 대응"
 SIGNAL_WATCH       = "🟠 경계 (준비)"
@@ -613,6 +679,10 @@ SIGNAL_BADGE = {
     SIGNAL_HOLD_SHORT: "badge-indigo", SIGNAL_HOLD_LONG: "badge-green",
 }
 
+
+# ==============================================================================
+# 4) PAGE CONFIG & CSS
+# ==============================================================================
 st.set_page_config(
     page_title="GANGJIN AI TRADER PRO",
     layout="wide",
@@ -683,6 +753,10 @@ hr { border: none; border-top: 1px solid #1e293b; margin: 14px 0; }
 </style>
 """)
 
+
+# ==============================================================================
+# 5) LIVE CLOCK HEADER
+# ==============================================================================
 def render_live_ny_header(btc_price, btc_change, usd_krw):
     btc_color = "#10b981" if btc_change >= 0 else "#f43f5e"
     btc_sign = "▲" if btc_change >= 0 else "▼"
@@ -734,6 +808,10 @@ setInterval(updateNYClock,1000);updateNYClock();
 </script></body></html>"""
     st.components.v1.html(live_clock_html, height=80)
 
+
+# ==============================================================================
+# 6) REAL-TIME QUOTE & MULTI-SOURCE DATA ENGINE (전일 종가 지연 방지 + 5중 폴백)
+# ==============================================================================
 def _detect_ext_session_label(ts_str: str = "") -> str:
     """타임스탬프 문자열 및 현재 뉴욕(ET) 시간대를 기반으로 프리마켓/애프터마켓 라벨을 자동 판정."""
     s = str(ts_str or "").upper().strip()
@@ -761,6 +839,7 @@ def _detect_ext_session_label(ts_str: str = "") -> str:
         pass
     return "애프터마켓"
 
+
 def _period_to_days(period: str) -> int:
     p = (period or "1y").lower().strip()
     if p == "2d": return 5
@@ -773,6 +852,7 @@ def _period_to_days(period: str) -> int:
     if p == "3y": return 1100
     if p == "5y": return 1850
     return 370
+
 
 def _parse_nasdaq_date(ts_str: str) -> str:
     """'Oct 21, 2026 4:00 PM ET' 또는 '2026-10-21 16:00:00' 등에서 YYYY-MM-DD 추출."""
@@ -796,6 +876,7 @@ def _parse_nasdaq_date(ts_str: str) -> str:
             pass
     return ""
 
+
 def _clean_company_search_name(raw_name: str, ticker: str) -> str:
     """'AEVEX Corp. Common Stock' -> 'AEVEX' 추출 (뉴스 검색 정밀도 향상용)."""
     if not raw_name:
@@ -812,6 +893,7 @@ def _clean_company_search_name(raw_name: str, ticker: str) -> str:
         return ""
     cand = " ".join(words[:2]).strip()
     return "" if cand.upper() == ticker.upper() else cand
+
 
 def _quote_from_yahoo_v8(ticker: str) -> dict:
     """Yahoo v8 1d/5m + 5d/1d meta.regularMarketPrice 기반 실시간 시세 및 프리/애프터마켓 추출."""
@@ -878,7 +960,7 @@ def _quote_from_yahoo_v8(ticker: str) -> dict:
                     ):
                         cand_chg = last_bar_px - reg_px
                         cand_pct = (cand_chg / reg_px) * 100.0
-
+                        # ⭐ 장외 유령 가격 필터링 (정규장 종가 대비 ±15% 이내 정상 틱만 인정)
                         if abs(cand_chg) > 1e-4 and abs(cand_pct) <= 15.0:
                             if hm >= 960:
                                 ext_price = last_bar_px
@@ -926,6 +1008,7 @@ def _quote_from_yahoo_v8(ticker: str) -> dict:
         except Exception as e:
             LOG.warning("Yahoo live quote failed (%s) for %s: %s", host, ticker, e)
     return {}
+
 
 def _quote_from_nasdaq(ticker: str) -> dict:
     """Nasdaq 실시간 Quote API (/api/quote/{symbol}/info + charting latestIntradayData)."""
@@ -980,7 +1063,7 @@ def _quote_from_nasdaq(ticker: str) -> dict:
                 ep = safe_float(sec.get("lastSalePrice"), 0.0)
                 sec_ts = str(sec.get("lastTradeTimestamp") or "")
                 sec_date = _parse_nasdaq_date(sec_ts)
-
+                # ⭐ 당일 장외 데이터인지 확인 + 정규장 종가(px) 기준 netChange 직접 재계산 + ±15% 컷오프
                 if ep > 0 and px > 0 and abs(ep - px) > 1e-4 and (not sec_date or sec_date == trade_date):
                     ec = ep - px
                     ec_pct = (ec / px) * 100.0
@@ -1002,6 +1085,7 @@ def _quote_from_nasdaq(ticker: str) -> dict:
         except Exception as e:
             LOG.warning("Nasdaq live quote failed (%s) for %s: %s", asset, t, e)
     return {}
+
 
 def _quote_from_finnhub(ticker: str) -> dict:
     """Finnhub 실시간 Quote (/api/v1/quote)."""
@@ -1035,6 +1119,7 @@ def _quote_from_finnhub(ticker: str) -> dict:
     except Exception as e:
         LOG.warning("Finnhub quote failed for %s: %s", t, e)
     return {}
+
 
 def _quote_from_cnbc(ticker: str) -> dict:
     """CNBC 실시간 Quote JSON 웹서비스 (선물/지수/주식 폴백)."""
@@ -1077,6 +1162,7 @@ def _quote_from_cnbc(ticker: str) -> dict:
     except Exception as e:
         LOG.warning("CNBC quote failed for %s: %s", t, e)
     return {}
+
 
 @st.cache_data(ttl=CFG["cache"]["live_quote"])
 def get_realtime_quote(ticker: str) -> dict:
@@ -1133,6 +1219,11 @@ def get_realtime_quote(ticker: str) -> dict:
                 best["ext_label"] = c["ext_label"]
     return best
 
+
+# ⭐ [16.5-R1] 실시간 봉 병합 로직 안전화:
+# - rt_dt > last_idx (실시간이 새로운 거래일) → 새 봉 추가 및 직전봉 종가(prev_cl) 정합성 보정
+# - rt_dt == last_idx (같은 거래일) → 마지막 봉만 갱신 (전일봉 절대 건드리지 않음)
+# - rt_dt < last_idx → 아무 동작도 하지 않음 (역방향 구형 데이터 유입 방지)
 def _stitch_realtime_quote(df: pd.DataFrame, rt: dict) -> pd.DataFrame:
     """일봉 히스토리(df)가 전일 종가에서 멈춰 있을 때 실시간 당일 봉을 안전하게 추가·갱신."""
     if df is None or df.empty or not rt or safe_float(rt.get("price"), 0.0) <= 0:
@@ -1176,6 +1267,7 @@ def _stitch_realtime_quote(df: pd.DataFrame, rt: dict) -> pd.DataFrame:
             df.iloc[-1, df.columns.get_loc("Volume")] = rt_vol
 
     return df
+
 
 def _fetch_yahoo_v8_direct(ticker: str, period: str = "1y") -> pd.DataFrame:
     """Yahoo v8 Chart JSON 직접 호출 (뉴욕 타임존 정규화 + meta.regularMarketPrice 당일 봉 누락 방지)."""
@@ -1250,6 +1342,7 @@ def _fetch_yahoo_v8_direct(ticker: str, period: str = "1y") -> pd.DataFrame:
         except Exception as e:
             LOG.warning("Yahoo v8 direct failed (%s) for %s: %s", host, ticker, e)
     return pd.DataFrame()
+
 
 def _fetch_nasdaq_history(ticker: str, period: str = "1y") -> pd.DataFrame:
     """Nasdaq Charting API (latestIntradayData 당일 봉 포함) + /api/quote/historical 이중 조회."""
@@ -1346,6 +1439,7 @@ def _fetch_nasdaq_history(ticker: str, period: str = "1y") -> pd.DataFrame:
             LOG.warning("Nasdaq fallback (%s) failed for %s: %s", asset, t, e)
     return pd.DataFrame()
 
+
 def _fetch_stooq_history(ticker: str, period: str = "1y") -> pd.DataFrame:
     """Stooq 글로벌 무료 CSV 엔드포인트 폴백."""
     stooq_map = {
@@ -1378,6 +1472,7 @@ def _fetch_stooq_history(ticker: str, period: str = "1y") -> pd.DataFrame:
     except Exception as e:
         LOG.warning("Stooq fallback failed for %s: %s", ticker, e)
     return pd.DataFrame()
+
 
 @st.cache_data(ttl=CFG["cache"]["top_bar"])
 def get_top_bar_data():
@@ -1415,6 +1510,7 @@ def get_top_bar_data():
             pass
     return p, ch, k
 
+
 @st.cache_data(ttl=CFG["cache"]["indices"])
 def get_market_indices():
     tickers = [
@@ -1445,6 +1541,7 @@ def get_market_indices():
         out.append({"name": name, "price": cur, "change": chg})
     return out
 
+
 def _clean_tz(df: pd.DataFrame) -> pd.DataFrame:
     if df is not None and not df.empty:
         if getattr(df.index, "tz", None) is not None:
@@ -1463,6 +1560,7 @@ def _clean_tz(df: pd.DataFrame) -> pd.DataFrame:
                 df[_c] = pd.to_numeric(df[_c], errors="coerce").astype("float64")
     return df
 
+
 @st.cache_data(ttl=CFG["cache"]["history"])
 def get_history(ticker: str, period: str = "1y") -> pd.DataFrame:
     t = ticker.strip().upper()
@@ -1471,16 +1569,19 @@ def get_history(ticker: str, period: str = "1y") -> pd.DataFrame:
 
     df = pd.DataFrame()
 
+    # 1차: Yahoo v8 Direct JSON
     h_v8 = _fetch_yahoo_v8_direct(t, period)
     if not h_v8.empty and len(h_v8) >= 5:
         df = _clean_tz(h_v8)
 
+    # 2차: Nasdaq 공식 Charting / Historical API
     if df.empty:
         h_nq = _fetch_nasdaq_history(t, period)
         if not h_nq.empty and len(h_nq) >= 5:
             LOG.info("Fetched %s from Nasdaq API fallback", t)
             df = _clean_tz(h_nq)
 
+    # 3차: yfinance 라이브러리
     if df.empty:
         try:
             h = yf.Ticker(t).history(period=period)
@@ -1489,12 +1590,14 @@ def get_history(ticker: str, period: str = "1y") -> pd.DataFrame:
         except Exception as e:
             LOG.warning("yfinance history failed for %s: %s", t, e)
 
+    # 4차: Stooq 무료 CSV API
     if df.empty:
         h_sq = _fetch_stooq_history(t, period)
         if not h_sq.empty and len(h_sq) >= 5:
             LOG.info("Fetched %s from Stooq CSV fallback", t)
             df = _clean_tz(h_sq)
 
+    # 5차: xfinance 라이브러리 (설치 시)
     if df.empty and HAS_XFINANCE:
         try:
             xh = xf.Ticker(t).history(period=period)
@@ -1515,6 +1618,7 @@ def get_history(ticker: str, period: str = "1y") -> pd.DataFrame:
         LOG.warning("Realtime stitch skipped for %s: %s", t, e)
 
     return df
+
 
 @st.cache_data(ttl=CFG["cache"]["market_cap"])
 def get_market_cap(ticker: str):
@@ -1551,6 +1655,7 @@ def get_market_cap(ticker: str):
     except Exception:
         pass
     return None
+
 
 @st.cache_data(ttl=CFG["cache"]["fear_greed"])
 def get_fear_and_greed_index():
@@ -1604,6 +1709,10 @@ def get_fear_and_greed_index():
         "badge_cls": badge_cls, "bar_color": bar_color, "advice": advice,
     }
 
+
+# ==============================================================================
+# 7) SHORT INTEREST & GEX
+# ==============================================================================
 @st.cache_data(ttl=CFG["cache"]["short_interest"])
 def get_short_interest_data(ticker: str) -> dict:
     short_pct = 0.0
@@ -1618,6 +1727,7 @@ def get_short_interest_data(ticker: str) -> dict:
     except Exception as e:
         LOG.info("short_interest skipped/fallback for %s (Yahoo rate limit guard): %s", ticker, e)
     return {"short_pct": round(short_pct, 2), "days_to_cover": round(short_ratio, 2), "shares_short": shares_short}
+
 
 @st.cache_data(ttl=CFG["cache"]["gex"])
 def get_gamma_wall_and_gex_data(ticker: str, current_price: float = 0.0, exp_date=None):
@@ -1667,6 +1777,7 @@ def get_gamma_wall_and_gex_data(ticker: str, current_price: float = 0.0, exp_dat
                 "cp_oi_ratio": 1.0, "total_call_oi": 0, "total_put_oi": 0,
                 "gex_status": "옵션 조회 제한 (기본 추세 모드)", "is_gamma_squeeze_zone": False}
 
+
 def evaluate_squeeze_potential(short_data, gex_data, current_price, box_high, vol_ratio):
     scfg = CFG["squeeze"]
     sp = short_data.get("short_pct", 0.0)
@@ -1710,7 +1821,12 @@ def evaluate_squeeze_potential(short_data, gex_data, current_price, box_high, vo
     return {"sq_score": sq_score, "bonus": bonus, "grade": grade, "badge": badge,
             "reasons": reasons if reasons else ["특이 공매도/옵션 과열 신호 없음"], "guide": guide}
 
+
+# ==============================================================================
+# 8) SQLite
+# ==============================================================================
 _ACTIVE_DB_PATH = CFG["paths"]["db"]
+
 
 def _db_conn():
     global _ACTIVE_DB_PATH
@@ -1731,6 +1847,7 @@ def _db_conn():
     conn = sqlite3.connect("/tmp/gangjin_portfolio.db", check_same_thread=False, timeout=15.0)
     return conn
 
+
 def init_db():
     try:
         with _db_conn() as conn:
@@ -1748,6 +1865,7 @@ def init_db():
     except Exception as e:
         LOG.error("init_db error: %s", e)
 
+
 def db_get_holdings() -> list:
     try:
         with _db_conn() as conn:
@@ -1758,6 +1876,7 @@ def db_get_holdings() -> list:
     except Exception as e:
         LOG.error("db_get_holdings error: %s", e)
         return []
+
 
 def db_upsert_holding(ticker, buy_price, qty, target_roi=15.0, stop_loss_pct=7.0):
     t = ticker.strip().upper()
@@ -1773,6 +1892,7 @@ def db_upsert_holding(ticker, buy_price, qty, target_roi=15.0, stop_loss_pct=7.0
     except Exception as e:
         LOG.error("db_upsert_holding error: %s", e)
 
+
 def db_delete_holding(ticker):
     try:
         with _db_conn() as conn:
@@ -1780,6 +1900,7 @@ def db_delete_holding(ticker):
             conn.commit()
     except Exception as e:
         LOG.error("db_delete_holding error: %s", e)
+
 
 def db_log_alert(ticker, signal, price, message):
     try:
@@ -1789,6 +1910,7 @@ def db_log_alert(ticker, signal, price, message):
             conn.commit()
     except Exception as e:
         LOG.error("db_log_alert error: %s", e)
+
 
 def db_add_journal_entry(trade_date, ticker, side, price, qty, realized_pnl, strategy_tag, emotion_tag, memo):
     try:
@@ -1802,6 +1924,7 @@ def db_add_journal_entry(trade_date, ticker, side, price, qty, realized_pnl, str
     except Exception as e:
         LOG.error("db_add_journal_entry error: %s", e)
 
+
 def db_get_journal_entries(limit=200):
     try:
         with _db_conn() as conn:
@@ -1813,6 +1936,7 @@ def db_get_journal_entries(limit=200):
         LOG.error("db_get_journal_entries error: %s", e)
         return []
 
+
 def db_delete_journal_entry(entry_id):
     try:
         with _db_conn() as conn:
@@ -1820,6 +1944,7 @@ def db_delete_journal_entry(entry_id):
             conn.commit()
     except Exception as e:
         LOG.error("db_delete_journal_entry error: %s", e)
+
 
 def db_register_signal_for_eval(ticker, signal, price, horizons=(5, 10, 20)):
     today = datetime.now().strftime("%Y-%m-%d")
@@ -1833,6 +1958,7 @@ def db_register_signal_for_eval(ticker, signal, price, horizons=(5, 10, 20)):
             conn.commit()
     except Exception as e:
         LOG.error(f"db_register_signal_for_eval: {e}")
+
 
 def db_eval_pending_signals():
     try:
@@ -1875,6 +2001,7 @@ def db_eval_pending_signals():
         except Exception as e:
             LOG.warning(f"eval signal {rid}: {e}")
 
+
 def db_get_signal_stats():
     try:
         with _db_conn() as conn:
@@ -1895,8 +2022,12 @@ def db_get_signal_stats():
     except Exception:
         return []
 
+
 init_db()
 
+# ==============================================================================
+# [20.0 NEW] SELF-EVOLVING DB TABLES & CRUD (Paper Trading · 16-Team Audit · Evolution)
+# ==============================================================================
 import json
 import math
 import ast
@@ -1933,6 +2064,7 @@ DEFAULT_VETO_THRESHOLDS = {
     "journal_bias_link": True,
     "auto_evolution_enabled": False,
 }
+
 
 def init_evolution_db():
     """20.0 자가 진화 · EOD 모의매매 · 16개 팀 감사 전용 SQLite 테이블 초기화 및 v1.0.0 챔피언 시드."""
@@ -2059,7 +2191,7 @@ def init_evolution_db():
                 details_json TEXT DEFAULT '{}',
                 created_at TEXT
             )""")
-
+            # Seed v1.0.0 Champion if empty
             row = conn.execute("SELECT COUNT(*) FROM manager_versions").fetchone()
             if not row or row[0] == 0:
                 now_s = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -2081,7 +2213,9 @@ def init_evolution_db():
     except Exception as e:
         LOG.error("init_evolution_db error: %s", e)
 
+
 init_evolution_db()
+
 
 def db_get_champion_version() -> dict:
     try:
@@ -2136,6 +2270,7 @@ def db_get_champion_version() -> dict:
         "promotion_date": "",
     }
 
+
 def db_get_challengers() -> list:
     try:
         with _db_conn() as conn:
@@ -2166,6 +2301,7 @@ def db_get_challengers() -> list:
     except Exception:
         return []
 
+
 def db_log_evolution_event(event_type: str, from_ver: str, to_ver: str, reason: str, details: dict = None):
     try:
         with _db_conn() as conn:
@@ -2184,6 +2320,7 @@ def db_log_evolution_event(event_type: str, from_ver: str, to_ver: str, reason: 
             conn.commit()
     except Exception as e:
         LOG.error("db_log_evolution_event error: %s", e)
+
 
 def db_get_recent_evolution_events(limit: int = 15) -> list:
     try:
@@ -2207,6 +2344,7 @@ def db_get_recent_evolution_events(limit: int = 15) -> list:
         ]
     except Exception:
         return []
+
 
 def db_log_chief_snapshot(chief_dec, entry_price: float):
     """Tab 1에서 ChiefDecision이 생성될 때 당일 판단 스냅샷을 DB에 자동 저장."""
@@ -2238,6 +2376,11 @@ def db_log_chief_snapshot(chief_dec, entry_price: float):
     except Exception as e:
         LOG.debug("db_log_chief_snapshot skipped: %s", e)
 
+
+
+# ==============================================================================
+# 9) TELEGRAM & TRAILING
+# ==============================================================================
 def send_telegram_alert(text, token="", chat_id=""):
     tk = (token or os.getenv("TELEGRAM_BOT_TOKEN", "")).strip()
     cid = (chat_id or os.getenv("TELEGRAM_CHAT_ID", "")).strip()
@@ -2251,6 +2394,7 @@ def send_telegram_alert(text, token="", chat_id=""):
         return False, f"전송 실패 (HTTP {resp.status_code})"
     except Exception as e:
         return False, f"오류: {e}"
+
 
 def get_stock_cap_and_trailing_profile(ticker, mkt_cap, atr_pct):
     t_upper = ticker.upper()
@@ -2295,16 +2439,22 @@ def get_stock_cap_and_trailing_profile(ticker, mkt_cap, atr_pct):
     return {"cap_tier": cap_tier, "cap_desc": cap_desc, "cap_badge": cap_badge,
             "atr_pct": atr_pct, "ts_tight_pct": ts_tight_pct, "ts_core_pct": ts_core_pct}
 
+
 def normalize_indices_key(indices):
     return tuple((str(item.get("name", "")), round(safe_float(item.get("price", 0.0)), 2),
                   round(safe_float(item.get("change", 0.0)), 2)) for item in (indices or []))
 
+
+# ==============================================================================
+# 9-B) MULTI-SOURCE EARNINGS CALENDAR ENGINE (⭐ [16.5] 실적발표일 6중 정밀 탐지 엔진)
+# ==============================================================================
 _ETF_NO_EARNINGS = frozenset({
     "SPY", "QQQ", "DIA", "IWM", "VOO", "VTI", "IVV", "SOXX", "SMH", "ARKK",
     "XLF", "XLE", "XLK", "XLV", "XLI", "XLP", "XLY", "XLU", "XLB", "XLRE",
     "TLT", "IEF", "SHY", "GLD", "SLV", "USO", "UNG", "IBIT", "FBTC", "BITO",
     "SCHD", "JEPI", "JEPQ", "MSTY", "NVDY", "TSLY", "CONY",
 })
+
 
 def _format_selected_earnings(best_date, ny_today, tod_hint: str = "", is_estimated: bool = False) -> dict:
     """선정된 실적 발표일(best_date)과 미국 동부 오늘 날짜(ny_today)의 D-Day 차이를 계산하여 배지·안내문 생성."""
@@ -2341,7 +2491,7 @@ def _format_selected_earnings(best_date, ny_today, tod_hint: str = "", is_estima
             "date_str": d_str,
             "is_confirmed": not is_estimated,
         }
-
+    # 최근 1~5일 이내 실적 발표 완료 (-5 <= dl < 0)
     return {
         "info": f"📢 최근 실적 발표 완료 (D+{abs(dl)}일: {d_str})",
         "imminent": False,
@@ -2350,6 +2500,7 @@ def _format_selected_earnings(best_date, ny_today, tod_hint: str = "", is_estima
         "date_str": d_str,
         "is_confirmed": True,
     }
+
 
 @st.cache_data(ttl=CFG["cache"]["earnings"])
 def get_earnings_schedule(ticker: str) -> dict:
@@ -2384,7 +2535,7 @@ def get_earnings_schedule(ticker: str) -> dict:
         }
 
     ny_today = _ny_today_date()
-
+    # 후보 리스트: (date_obj, priority, tod_hint) — priority가 낮을수록(1~5) 신뢰도 높음
     candidates = []
 
     def _add_candidates(raw_val, priority: int, tod_text: str = ""):
@@ -2392,6 +2543,9 @@ def get_earnings_schedule(ticker: str) -> dict:
         for d in _extract_dates_from_any(raw_val, ny_today):
             candidates.append((d, priority, tod))
 
+    # ------------------------------------------------------------------
+    # [1차] Nasdaq 공식 Analyst Earnings-Date & Quote Notifications API
+    # ------------------------------------------------------------------
     nq_headers = {
         **BROWSER_HEADERS,
         "Origin": "https://www.nasdaq.com",
@@ -2439,6 +2593,9 @@ def get_earnings_schedule(ticker: str) -> dict:
     except Exception:
         pass
 
+    # ------------------------------------------------------------------
+    # [2차] Finnhub Earnings Calendar API (/api/v1/calendar/earnings)
+    # ------------------------------------------------------------------
     if FINNHUB_KEY:
         try:
             f_from = (ny_today - timedelta(days=7)).strftime("%Y-%m-%d")
@@ -2452,6 +2609,9 @@ def get_earnings_schedule(ticker: str) -> dict:
         except Exception as e:
             LOG.debug("Finnhub earnings calendar failed for %s: %s", t, e)
 
+    # ------------------------------------------------------------------
+    # [3차] CNBC Quote Webservice EventData (next_earnings_date)
+    # ------------------------------------------------------------------
     try:
         u_cb = (
             "https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol"
@@ -2469,6 +2629,9 @@ def get_earnings_schedule(ticker: str) -> dict:
     except Exception:
         pass
 
+    # ------------------------------------------------------------------
+    # [4차] Yahoo Finance (calendar dict/DataFrame + get_earnings_dates + info)
+    # ------------------------------------------------------------------
     try:
         yt = yf.Ticker(t)
         try:
@@ -2487,6 +2650,7 @@ def get_earnings_schedule(ticker: str) -> dict:
         except Exception:
             pass
 
+        # Yahoo calendar가 비어 있을 때 get_earnings_dates(limit=8) 폴백
         if not any(0 <= (d - ny_today).days <= 120 for d, _, _ in candidates):
             try:
                 ed_df = yt.get_earnings_dates(limit=8)
@@ -2495,6 +2659,7 @@ def get_earnings_schedule(ticker: str) -> dict:
             except Exception:
                 pass
 
+        # info['earningsTimestamp'] / earningsTimestampStart 폴백
         if not any(0 <= (d - ny_today).days <= 120 for d, _, _ in candidates):
             try:
                 inf = yt.info or {}
@@ -2506,6 +2671,9 @@ def get_earnings_schedule(ticker: str) -> dict:
     except Exception:
         pass
 
+    # ------------------------------------------------------------------
+    # [5차] CFG["known_earnings"] 수동 보정 사전 (과거·미래 전체 리스트 중 유효 날짜 선별)
+    # ------------------------------------------------------------------
     known_list = (CFG.get("known_earnings") or {}).get(t) or []
     if known_list:
         _add_candidates(known_list, priority=3)
@@ -2513,6 +2681,7 @@ def get_earnings_schedule(ticker: str) -> dict:
     if not candidates:
         return default_res
 
+    # 날짜별 최고 우선순위 및 장전/장후 태그 병합
     by_date = {}
     for d_obj, prio, tod in candidates:
         if d_obj not in by_date:
@@ -2521,13 +2690,14 @@ def get_earnings_schedule(ticker: str) -> dict:
             old_p, old_tod = by_date[d_obj]
             by_date[d_obj] = (min(old_p, prio), old_tod or tod)
 
+    # 1순위: 오늘(D-Day)부터 향후 125일 이내의 가장 가까운 예정 실적일 (0 <= dl <= 125)
     upcoming = [
         (d_obj, prio, tod)
         for d_obj, (prio, tod) in by_date.items()
         if 0 <= (d_obj - ny_today).days <= 125
     ]
     if upcoming:
-
+        # 가장 가까운 미래 실적일을 우선하되, 불과 1~3일 차이 내에서는 더 높은 신뢰도(낮은 priority) 우선
         upcoming.sort(key=lambda x: ((x[0] - ny_today).days, x[1]))
         best_d, best_p, best_tod = upcoming[0]
         for alt_d, alt_p, alt_tod in upcoming[1:]:
@@ -2535,6 +2705,7 @@ def get_earnings_schedule(ticker: str) -> dict:
                 best_d, best_p, best_tod = alt_d, alt_p, (alt_tod or best_tod)
         return _format_selected_earnings(best_d, ny_today, best_tod, is_estimated=False)
 
+    # 2순위: 최근 5일 이내에 막 실적을 발표한 경우 (-5 <= dl < 0)
     recent_past = [
         (d_obj, prio, tod)
         for d_obj, (prio, tod) in by_date.items()
@@ -2545,6 +2716,7 @@ def get_earnings_schedule(ticker: str) -> dict:
         best_d, _, best_tod = recent_past[0]
         return _format_selected_earnings(best_d, ny_today, best_tod, is_estimated=False)
 
+    # 3순위: 125일 이후 먼 미래 일정이 존재하는 경우
     far_future = [
         (d_obj, prio, tod)
         for d_obj, (prio, tod) in by_date.items()
@@ -2555,6 +2727,7 @@ def get_earnings_schedule(ticker: str) -> dict:
         best_d, _, best_tod = far_future[0]
         return _format_selected_earnings(best_d, ny_today, best_tod, is_estimated=False)
 
+    # 4순위 (6차 폴백): 과거 실적일만 존재할 때 분기 주기(+91일 = 13주)로 차기 실적일 자동 추정
     past_dates = sorted(d_obj for d_obj in by_date.keys() if (d_obj - ny_today).days < -5)
     if past_dates:
         proj_d = past_dates[-1]
@@ -2562,7 +2735,7 @@ def get_earnings_schedule(ticker: str) -> dict:
             proj_d = proj_d + timedelta(days=91)
             if (proj_d - ny_today).days >= 0:
                 break
-
+        # 주말이면 가장 가까운 평일(목/화)로 보정
         if proj_d.weekday() == 5:
             proj_d -= timedelta(days=1)
         elif proj_d.weekday() == 6:
@@ -2571,6 +2744,7 @@ def get_earnings_schedule(ticker: str) -> dict:
             return _format_selected_earnings(proj_d, ny_today, "", is_estimated=True)
 
     return default_res
+
 
 def _refine_earnings_with_news(earn_sched: dict, raw_candidates: list) -> dict:
     """
@@ -2598,6 +2772,7 @@ def _refine_earnings_with_news(earn_sched: dict, raw_candidates: list) -> dict:
         flags=re.IGNORECASE,
     )
 
+    # 1) 실적 발표 예정일 공지 PR에서 정확한 날짜 추출
     if not has_confirmed_upcoming:
         for cand in raw_candidates:
             title = str(cand.get("raw_title") or "")
@@ -2609,6 +2784,7 @@ def _refine_earnings_with_news(earn_sched: dict, raw_candidates: list) -> dict:
                     tod = _detect_tod_label(title)
                     return _format_selected_earnings(valid_up[0], ny_today, tod, is_estimated=False)
 
+    # 2) 최근 48h 내 실제 실적 발표 기사가 존재할 때 '미정/통과' 상태라면 즉시 '실적 발표 완료'로 전환
     if earn_sched.get("days_left") is None or not earn_sched.get("is_confirmed"):
         for cand in raw_candidates:
             age_h = safe_float(cand.get("age_h"), 9999.0)
@@ -2631,6 +2807,10 @@ def _refine_earnings_with_news(earn_sched: dict, raw_candidates: list) -> dict:
 
     return earn_sched
 
+
+# ==============================================================================
+# 10) MACRO + NEWS (⭐ [16.5-R1] 뉴스 수집 10분 독립 캐시 + 전 섹터 호악재 판독 + 과거 뉴스 패스)
+# ==============================================================================
 @st.cache_data(ttl=CFG["cache"]["news_candidates"])
 def fetch_raw_news_candidates(ticker: str, company_name: str = "") -> list:
     """
@@ -2638,7 +2818,7 @@ def fetch_raw_news_candidates(ticker: str, company_name: str = "") -> list:
     거시 지수(indices_key) 변동과 분리하여 10분(600초) 단위로 독립 캐싱합니다.
     """
     ncfg = CFG["news"]
-    stale_limit_h = ncfg["recency_hours"]["stale_pass"]
+    stale_limit_h = ncfg["recency_hours"]["stale_pass"]  # 72h 하드 컷오프
     raw_candidates = []
     seen_titles = set()
 
@@ -2646,11 +2826,11 @@ def fetch_raw_news_candidates(ticker: str, company_name: str = "") -> list:
         if not raw_title or pub_dt is None:
             return
         age_h = _hours_since(pub_dt)
-
+        # ⭐ 72시간(3일) 초과 기사는 과거 뉴스이므로 수집 단계에서 100% 폐기 (무조건 선별 패스)
         if age_h > stale_limit_h:
             return
         tl = raw_title.lower()
-
+        # ⭐ 회고성·클릭베이트("last month", "if you invested" 등) 기사 무조건 패스
         for pat in ncfg["retrospective_skip"]:
             if re.search(pat, tl):
                 return
@@ -2666,6 +2846,7 @@ def fetch_raw_news_candidates(ticker: str, company_name: str = "") -> list:
             "src_tag": src_tag,
         })
 
+    # ⭐ [1차] Finnhub Company News API (최근 3일)
     if FINNHUB_KEY and HAS_FINNHUB_LIB:
         try:
             client = finnhub.Client(api_key=FINNHUB_KEY)
@@ -2680,6 +2861,7 @@ def fetch_raw_news_candidates(ticker: str, company_name: str = "") -> list:
         except Exception as e:
             LOG.warning("Finnhub news fetch failed for %s: %s", ticker, e)
 
+    # ⭐ [2차] Yahoo Finance 공식 티커 RSS (Seeking Alpha·Benzinga·BusinessWire 직결 속보)
     try:
         yh_rss_url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={urllib.parse.quote(ticker.upper())}&region=US&lang=en-US"
         r_yh = requests.get(yh_rss_url, headers=BROWSER_HEADERS, timeout=5)
@@ -2704,6 +2886,7 @@ def fetch_raw_news_candidates(ticker: str, company_name: str = "") -> list:
     except Exception as e:
         LOG.warning("Yahoo RSS fetch failed for %s: %s", ticker, e)
 
+    # ⭐ [3차] Google News RSS (티커 + 기업명 병행 검색으로 'Aevex' 같은 기업명 단독 표기 속보 포착)
     try:
         cname = (company_name or "").strip()
         if cname and cname.upper() != ticker.upper():
@@ -2733,6 +2916,7 @@ def fetch_raw_news_candidates(ticker: str, company_name: str = "") -> list:
     except Exception as e:
         LOG.warning("Google RSS fetch failed for %s: %s", ticker, e)
 
+    # ⭐ [4차] Nasdaq 공식 종목 뉴스 API (나스닥/뉴욕거래소 공시·프레스릴리즈 보완)
     try:
         nq_news_url = (
             f"https://www.nasdaq.com/api/news/topic/articlebysymbol"
@@ -2757,6 +2941,7 @@ def fetch_raw_news_candidates(ticker: str, company_name: str = "") -> list:
 
     raw_candidates.sort(key=lambda x: x["age_h"])
     return raw_candidates
+
 
 @st.cache_data(ttl=CFG["cache"]["macro"])
 def analyze_macro_and_stock_catalysts(ticker, indices_key, company_name: str = "", use_llm: bool = False):
@@ -2797,6 +2982,7 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, company_name: str = "
     if not macro_alerts:
         macro_alerts.append(f"⚖️ 거시 중립 (금리 {tnx['price']:.2f}% | WTI ${wti['price']:.1f} | VIX {vix['price']:.1f})")
 
+    # ⭐ [16.5] 6중 실적 발표일 정밀 탐지 (Nasdaq -> Finnhub -> CNBC -> Yahoo 다중포맷 -> KNOWN_EARNINGS -> 뉴스 PR 보정)
     earn_sched = get_earnings_schedule(ticker)
     earnings_info = earn_sched["info"]
     earnings_imminent = earn_sched["imminent"]
@@ -2804,9 +2990,10 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, company_name: str = "
     earnings_days_left = earn_sched["days_left"]
 
     ncfg = CFG["news"]
-    stale_limit_h = ncfg["recency_hours"]["stale_pass"]
-    active_limit_h = ncfg["recency_hours"]["recent"]
+    stale_limit_h = ncfg["recency_hours"]["stale_pass"]  # 72h 하드 컷오프
+    active_limit_h = ncfg["recency_hours"]["recent"]     # 48h 시그널 컷오프
 
+    # ⭐ [16.5-R1] 10분 독립 캐시에서 뉴스 후보군 로드 후 현재 시각 기준 경과시간(age_h) 동적 갱신
     cached_candidates = fetch_raw_news_candidates(ticker, company_name=company_name)
     raw_candidates = []
     for c_item in cached_candidates:
@@ -2834,6 +3021,7 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, company_name: str = "
         src_tag = cand["src_tag"]
         tl = raw_title.lower()
 
+        # 오탐 방지 문구("no orders were stopped", "reaffirms", "lifts clinical hold", "denies [FTC's] injunction" 등) 확인
         is_fp_relief = _any_kw(tl, ncfg["bad_false_positive"]) or bool(
             re.search(
                 r"\bdenies\s+(?:[a-z0-9'\-]+\s+){1,2}(?:injunction|class action|class certification|bid protest|gao protest)\b",
@@ -2849,7 +3037,7 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, company_name: str = "
         )
         severe_hit = _any_kw(tl, ncfg["bad_severe"]) or severe_court_bad
         strict_hit = _any_kw(tl, ncfg["bad_strict"]) or _any_kw(tl, ncfg["cut_bearish"])
-
+        # 만약 "crashes" / "plunges" / "52-week low" / "halts" / "denies approval" / "denies motion to dismiss"가 명시된 경우 중대 악재 유지
         hard_crash = severe_court_bad or any(
             _kw_match(tl, k)
             for k in (
@@ -2864,6 +3052,8 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, company_name: str = "
 
         bad_hit = severe_hit or strict_hit
 
+        # 계약/수주 호재 판별: 확정적 수주 구문(contract_strong)이거나,
+        # 일반 계약 단어(contract_context) + 수주 동사/규모(contract_action_verbs 또는 $)가 함께 있을 때만 인정
         legal_bull_relief = bool(
             re.search(
                 r"\bdenies\s+(?:[a-z0-9'\-]+\s+){0,2}(?:injunction|preliminary injunction|bid protest|gao protest)\b",
@@ -2878,11 +3068,14 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, company_name: str = "
         eb_hit = _any_kw(tl, ncfg["earnings_bull"]) or _any_kw(tl, ncfg["cut_bullish"])
         g_hit = _any_kw(tl, ncfg["geo"])
 
+        # ⭐ 핵심 오분류 방지 규칙:
+        # "Navy halts Aevex drone contract", "Pentagon cancels contract", "loses $650M contract" 등
+        # 악재 키워드가 동시에 존재하면 계약/실적 호재(c_hit, eb_hit)에서 즉시 제외!
         if bad_hit:
             c_hit = False
             eb_hit = False
 
-        w = _recency_weight(pub_dt)
+        w = _recency_weight(pub_dt)  # 48h 초과 시 w == 0.0 (과거 호재·악재 자동 패스!)
         is_stale_pass = (age_h > active_limit_h) or (w <= 0.0)
 
         if is_stale_pass:
@@ -2898,7 +3091,7 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, company_name: str = "
                 ebh_cnt += 1
                 bull_newest_hours = min(bull_newest_hours, age_h)
             if bad_hit:
-
+                # 중대 악재(계약 중단·유증·Form 144·상폐·폭락 등)는 가중 처벌(-18점), 일반 악재는 -12점
                 penalty_base = 18.0 if severe_hit else 12.0
                 bh_score += penalty_base * w
                 bh_cnt += 1
@@ -2937,6 +3130,7 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, company_name: str = "
             "badge_class": badge_class,
         })
 
+    # 뉴스 헤드라인 기반 실적발표일 PR / 최근 48h 실적발표 완료 자동 보강
     earn_sched = _refine_earnings_with_news(earn_sched, raw_candidates)
     earnings_info = earn_sched["info"]
     earnings_imminent = earn_sched["imminent"]
@@ -3005,6 +3199,10 @@ def analyze_macro_and_stock_catalysts(ticker, indices_key, company_name: str = "
         "tnx": tnx, "wti": wti, "vix": vix,
     }
 
+
+# ==============================================================================
+# 11) NOISE FILTER
+# ==============================================================================
 def evaluate_holding_noise_filter(ticker, hist, buy_price=0.0, qty=0.0, target_roi_pct=15.0, custom_stop_pct=7.0):
     if hist is None or hist.empty or len(hist) < 25:
         return None
@@ -3098,94 +3296,16 @@ def evaluate_holding_noise_filter(ticker, hist, buy_price=0.0, qty=0.0, target_r
             "wave_status": wave_status, "headline": headline,
             "action_guide": action_guide, "cap_tier": cap_prof['cap_tier']}
 
+
 @st.cache_data(ttl=CFG["cache"]["noise_filter"])
 def evaluate_holding_noise_filter_cached(ticker, buy_price, qty, target_roi_pct, custom_stop_pct):
     h = get_history(ticker)
     return evaluate_holding_noise_filter(ticker, h, buy_price, qty, target_roi_pct, custom_stop_pct)
 
-def _analyze_single_scan_ticker(t, df_slice=None):
-    try:
-        df = pd.DataFrame()
-        if df_slice is not None and not df_slice.empty:
-            try:
-                df = _clean_tz(df_slice.dropna())
-                rt_t = get_realtime_quote(t)
-                if rt_t and safe_float(rt_t.get("price"), 0.0) > 0:
-                    df = _stitch_realtime_quote(df, rt_t)
-            except Exception:
-                df = pd.DataFrame()
-        if df.empty or len(df) < 20:
-            try:
-                yh = yf.Ticker(t).history(period="3mo")
-                if yh is not None and not yh.empty and "Close" in yh.columns:
-                    df = _clean_tz(yh)
-                    rt_t = get_realtime_quote(t)
-                    if rt_t and safe_float(rt_t.get("price"), 0.0) > 0:
-                        df = _stitch_realtime_quote(df, rt_t)
-            except Exception:
-                df = pd.DataFrame()
-        if df.empty or len(df) < 20:
-            df = get_history(t, period="3mo")
-        if df.empty or len(df) < 20:
-            return None
-        close, high, low, vol = df['Close'], df['High'], df['Low'], df['Volume']
-        curr_price = safe_float(close.iloc[-1], 0.0)
-        prev_price = safe_float(close.iloc[-2], curr_price) if len(close) >= 2 else curr_price
-        if curr_price <= 0:
-            return None
-        change_pct = ((curr_price - prev_price) / prev_price) * 100.0 if prev_price > 0 else 0.0
-        idx_1m = max(0, len(close) - 22) if len(close) >= 22 else 0
-        price_1m_ago = safe_float(close.iloc[idx_1m], curr_price)
-        ret_1m_pct = ((curr_price - price_1m_ago) / price_1m_ago) * 100.0 if price_1m_ago > 0 else 0.0
-        ema20 = safe_float(close.ewm(span=20, adjust=False).mean().iloc[-1], curr_price)
-        box_high = safe_float(high.rolling(20).max().iloc[-1], curr_price)
-        box_low = safe_float(low.rolling(20).min().iloc[-1], curr_price)
-        rsi = safe_float(compute_wilder_rsi(close, 14).iloc[-1], 50.0)
-        avg_vol = safe_float(vol.rolling(20).mean().iloc[-1], 0.0)
-        curr_vol = safe_float(vol.iloc[-1], 0.0)
-        vol_ratio = curr_vol / avg_vol if avg_vol > 0 else 1.0
-        tr1 = high - low
-        tr2 = (high - close.shift(1)).abs()
-        tr3 = (low - close.shift(1)).abs()
-        atr_val = safe_float(pd.concat([tr1, tr2, tr3], axis=1).max(axis=1).rolling(14).mean().iloc[-1], curr_price * 0.035)
-        atr_pct = (atr_val / curr_price) * 100.0 if curr_price > 0 else 3.5
-        ts_rec = round(float(np.clip(atr_pct * 2.6, 5.5, 16.5)), 1)
-        action, badge = "⏸️ WAIT", "badge-blue"
-        if curr_price >= box_high and vol_ratio >= 1.5:
-            action, badge = "🔥 STRONG BUY", "badge-green"
-        elif curr_price >= box_high:
-            action, badge = "📈 BUY", "badge-green"
-        elif curr_price < ema20 and rsi <= 25.0:
-            if change_pct <= -10.0 and vol_ratio >= 2.0:
-                action, badge = "🚨 악재점검 요망", "badge-red"
-            else:
-                action, badge = "🟢 PANIC BUY", "badge-green"
-        elif curr_price < ema20:
-            action, badge = "⚠️ EXIT", "badge-red"
-        elif curr_price > ema20 and 45.0 <= rsi <= 66.0 and (vol_ratio >= 1.05 or curr_price >= box_high * 0.96):
-            action, badge = "🟡 B급 관찰 (WATCH)", "badge-purple"
-        elif curr_price > ema20:
-            action, badge = "✅ HOLD", "badge-yellow"
-        return {
-            "raw_ticker": t,
-            "ticker": html.escape(t),
-            "price": round(curr_price, 2),
-            "change_pct": round(change_pct, 2),
-            "ret_1m_pct": round(ret_1m_pct, 2),
-            "action": action,
-            "badge": badge,
-            "rsi": round(rsi, 1),
-            "vol": round(vol_ratio, 1),
-            "box_high": round(box_high, 2),
-            "box_low": round(box_low, 2),
-            "atr_pct": round(atr_pct, 1),
-            "ts_rec": ts_rec,
-            "is_buy": "BUY" in action,
-            "is_watch": "WATCH" in action,
-        }
-    except Exception:
-        return None
 
+# ==============================================================================
+# 12) SCANNER / BACKTEST / WFA / RISK (야후 차단 시 개별 폴백 지원)
+# ==============================================================================
 @st.cache_data(ttl=CFG["cache"]["scanner"])
 def scan_watchlist(ticker_string):
     tickers = list(dict.fromkeys(t.strip().upper() for t in ticker_string.replace(',', ' ').split() if t.strip()))
@@ -3196,29 +3316,70 @@ def scan_watchlist(ticker_string):
         data = yf.download(tickers, period="3mo", group_by='ticker', threads=True, progress=False)
     except Exception:
         data = None
-    slices = {}
-    for t in tickers:
-        df_s = pd.DataFrame()
-        if data is not None and not data.empty:
-            try:
-                df_s = data[t].dropna() if len(tickers) > 1 else data.dropna()
-            except Exception:
-                df_s = pd.DataFrame()
-        slices[t] = df_s
     signals = []
-    max_w = min(8, max(1, len(tickers)))
-    with ThreadPoolExecutor(max_workers=max_w) as ex:
-        futs = {ex.submit(_analyze_single_scan_ticker, t, slices.get(t)): t for t in tickers}
-        for fut in as_completed(futs):
-            try:
-                res_item = fut.result()
-                if res_item:
-                    signals.append(res_item)
-            except Exception:
-                pass
+    for t in tickers:
+        try:
+            df = pd.DataFrame()
+            if data is not None and not data.empty:
+                try:
+                    df = data[t].dropna() if len(tickers) > 1 else data.dropna()
+                    df = _clean_tz(df)
+                    rt_t = get_realtime_quote(t)
+                    if rt_t and safe_float(rt_t.get("price"), 0.0) > 0:
+                        df = _stitch_realtime_quote(df, rt_t)
+                except Exception:
+                    df = pd.DataFrame()
+            if df.empty or len(df) < 20:
+                df = get_history(t, period="3mo")
+            if df.empty or len(df) < 20:
+                continue
+            close, high, low, vol = df['Close'], df['High'], df['Low'], df['Volume']
+            curr_price = safe_float(close.iloc[-1], 0.0)
+            prev_price = safe_float(close.iloc[-2], curr_price)
+            if curr_price <= 0:
+                continue
+            change_pct = ((curr_price - prev_price) / prev_price) * 100.0 if prev_price > 0 else 0.0
+            ema20 = safe_float(close.ewm(span=20, adjust=False).mean().iloc[-1], curr_price)
+            box_high = safe_float(high.rolling(20).max().iloc[-1], curr_price)
+            box_low = safe_float(low.rolling(20).min().iloc[-1], curr_price)
+            rsi = safe_float(compute_wilder_rsi(close, 14).iloc[-1], 50.0)
+            avg_vol = safe_float(vol.rolling(20).mean().iloc[-1], 0.0)
+            curr_vol = safe_float(vol.iloc[-1], 0.0)
+            vol_ratio = curr_vol / avg_vol if avg_vol > 0 else 1.0
+            tr1 = high - low
+            tr2 = (high - close.shift(1)).abs()
+            tr3 = (low - close.shift(1)).abs()
+            atr_val = safe_float(pd.concat([tr1, tr2, tr3], axis=1).max(axis=1).rolling(14).mean().iloc[-1], curr_price * 0.035)
+            atr_pct = (atr_val / curr_price) * 100.0 if curr_price > 0 else 3.5
+            ts_rec = round(float(np.clip(atr_pct * 2.6, 5.5, 16.5)), 1)
+            action, badge = "⏸️ WAIT", "badge-blue"
+            if curr_price >= box_high and vol_ratio >= 1.5:
+                action, badge = "🔥 STRONG BUY", "badge-green"
+            elif curr_price >= box_high:
+                action, badge = "📈 BUY", "badge-green"
+            elif curr_price < ema20 and rsi <= 25.0:
+                # 대량 거래량(-10% 이상 급락 + 거래량 2배 이상) 동반 폭락 시 악재 점검 경고
+                if change_pct <= -10.0 and vol_ratio >= 2.0:
+                    action, badge = "🚨 악재점검 요망", "badge-red"
+                else:
+                    action, badge = "🟢 PANIC BUY", "badge-green"
+            elif curr_price < ema20:
+                action, badge = "⚠️ EXIT", "badge-red"
+            elif curr_price > ema20 and 45.0 <= rsi <= 66.0 and (vol_ratio >= 1.05 or curr_price >= box_high * 0.96):
+                action, badge = "🟡 B급 관찰 (WATCH)", "badge-purple"
+            elif curr_price > ema20:
+                action, badge = "✅ HOLD", "badge-yellow"
+            signals.append({"ticker": html.escape(t), "price": curr_price, "change_pct": change_pct,
+                            "action": action, "badge": badge, "rsi": rsi, "vol": vol_ratio,
+                            "box_high": box_high, "box_low": box_low,
+                            "atr_pct": round(atr_pct, 1), "ts_rec": ts_rec, "is_buy": "BUY" in action,
+                            "is_watch": "WATCH" in action})
+        except Exception:
+            pass
     po = {"🔥 STRONG BUY": 0, "🟢 PANIC BUY": 1, "📈 BUY": 2, "🟡 B급 관찰 (WATCH)": 3, "✅ HOLD": 4, "⏸️ WAIT": 5, "🚨 악재점검 요망": 6, "⚠️ EXIT": 7}
     signals.sort(key=lambda x: (po.get(x['action'], 99), -x['change_pct']))
     return signals
+
 
 def _simulate_df(df_in, init_capital=10000.0, box_win=20, atr_mult=2.8):
     df = df_in.copy()
@@ -3306,11 +3467,13 @@ def _simulate_df(df_in, init_capital=10000.0, box_win=20, atr_mult=2.8):
             "mdd_bh": round(mdd_bh, 2), "win_rate": round(win_rate, 1),
             "total_trades": len(trades), "final_equity": round(float(eq_df["strategy_eq"].iloc[-1]), 2)}
 
+
 def run_strategy_backtest(ticker, period="2y", init_capital=10000.0):
     df = get_history(ticker, period=period)
     if df.empty or len(df) < 40:
         return {}
     return _simulate_df(df, init_capital=init_capital)
+
 
 def run_walk_forward(ticker, period="3y", n_splits=4, is_ratio=0.7):
     df = get_history(ticker, period=period)
@@ -3370,6 +3533,7 @@ def run_walk_forward(ticker, period="3y", n_splits=4, is_ratio=0.7):
             "avg_is_pct": round(avg_is, 2), "avg_oos_pct": round(avg_oos, 2),
             "wfe": round(float(np.clip(wfe, -200.0, 250.0)), 1),
             "consistency": round(consistency, 1), "verdict": verdict}
+
 
 def build_full_risk_report(holdings, benchmark="SPY"):
     if not holdings:
@@ -3442,6 +3606,10 @@ def build_full_risk_report(holdings, benchmark="SPY"):
             "stress_5pct_usd": round(total_val * 0.05 * beta, 1),
             "stress_10pct_usd": round(total_val * 0.10 * beta, 1)}
 
+
+# ==============================================================================
+# 13) 12-AGENT MULTI-TEAM ENGINE & CHIEF AI MANAGER & JOURNAL BIAS ANALYZER (⭐ [17.0 NEW])
+# ==============================================================================
 class AgentReport:
     """개별 전문 에이전트(12개 팀 + 매매일지 팀) 표준 리포트 객체."""
     def __init__(self, name: str, score: float, status: str, summary: str, details: dict = None):
@@ -3450,6 +3618,7 @@ class AgentReport:
         self.status = status
         self.summary = summary
         self.details = details or {}
+
 
 class ChiefDecision:
     """[Agent 13] Chief AI Manager 최종 통합 의사결정 및 8단계 Veto 리포트 객체."""
@@ -3489,6 +3658,8 @@ class ChiefDecision:
         self.veto_reason = veto_reason
         self.weights_used = weights_used or {}
 
+
+# ⭐ 초고속 섹터 판별 사전 (주요 110+ 종목 0ms 즉시 매핑 -> 미등록 종목만 yfinance 캐시 폴백)
 KNOWN_SECTORS = {
     "NVDA": "Technology", "AMD": "Technology", "TSM": "Technology", "AVGO": "Technology",
     "ARM": "Technology", "ASML": "Technology", "QCOM": "Technology", "MU": "Technology",
@@ -3584,6 +3755,7 @@ POLICY_CFG = {
     },
 }
 
+
 @st.cache_data(ttl=86400)
 def _get_sector(ticker: str) -> str:
     t = ticker.strip().upper()
@@ -3596,6 +3768,7 @@ def _get_sector(ticker: str) -> str:
         return str(info.get("sector") or "").strip()
     except Exception:
         return ""
+
 
 @st.cache_data(ttl=CFG["cache"]["policy"])
 def _fetch_policy_news() -> list:
@@ -3631,6 +3804,10 @@ def _fetch_policy_news() -> list:
         LOG.debug("Policy RSS fetch failed: %s", e)
     return items
 
+
+# ------------------------------------------------------------------------------
+# [Agent 1] Data Agent
+# ------------------------------------------------------------------------------
 def run_data_agent(ticker: str, hist: pd.DataFrame, rt_quote: dict) -> AgentReport:
     if hist is None or hist.empty or len(hist) < 25:
         return AgentReport("Data", 0, "DANGER", "차트 데이터 부족", {})
@@ -3655,6 +3832,10 @@ def run_data_agent(ticker: str, hist: pd.DataFrame, rt_quote: dict) -> AgentRepo
         },
     )
 
+
+# ------------------------------------------------------------------------------
+# [Agent 2] Chart Agent
+# ------------------------------------------------------------------------------
 def run_chart_agent(
     ticker: str,
     current_price: float,
@@ -3733,6 +3914,10 @@ def run_chart_agent(
         },
     )
 
+
+# ------------------------------------------------------------------------------
+# [Agent 3] Macro Agent
+# ------------------------------------------------------------------------------
 def run_macro_agent(indices: list, cat: dict = None) -> AgentReport:
     idx = {i["name"]: i for i in (indices or [])}
     vix = safe_float((idx.get("VIX 변동성") or {}).get("price"), 18.0)
@@ -3742,7 +3927,7 @@ def run_macro_agent(indices: list, cat: dict = None) -> AgentReport:
     else:
         raw_score = 0
         alerts = []
-
+    # Scale macro_score (-40~+30 range) to (-100~+100) for Chief AI Manager
     scaled_score = max(-100, min(100, int(round(raw_score * 2.2))))
     if raw_score <= -25 or vix >= 25.0:
         regime, status = "CRISIS", "DANGER"
@@ -3760,6 +3945,10 @@ def run_macro_agent(indices: list, cat: dict = None) -> AgentReport:
         {"regime": regime, "raw_score": raw_score, "vix": vix, "alerts": alerts},
     )
 
+
+# ------------------------------------------------------------------------------
+# [Agent 4] Master Agent (6대 대가 기법)
+# ------------------------------------------------------------------------------
 def run_master_agent(chart_r: AgentReport, pass_count: int, master_score_100: int, has_bad: bool = False) -> AgentReport:
     if chart_r.status == "DANGER" and has_bad:
         return AgentReport("Master", -80, "DANGER", "차트 붕괴 + 악재로 대가 기법 진입 차단", {"pass_count": pass_count, "master_score_100": master_score_100})
@@ -3781,6 +3970,10 @@ def run_master_agent(chart_r: AgentReport, pass_count: int, master_score_100: in
         {"pass_count": pass_count, "master_score_100": master_score_100},
     )
 
+
+# ------------------------------------------------------------------------------
+# [Agent 5] News & Earnings Agent
+# ------------------------------------------------------------------------------
 def run_news_agent_from_cat(cat: dict, recovery_bonus: int = 0, bull_fade_penalty: float = 0.0) -> AgentReport:
     eff_cat = safe_float(cat.get("catalyst_score"), 0.0) - bull_fade_penalty + recovery_bonus
     score = max(-100, min(100, int(round(eff_cat * 2.5))))
@@ -3820,11 +4013,15 @@ def run_news_agent_from_cat(cat: dict, recovery_bonus: int = 0, bull_fade_penalt
         },
     )
 
+
+# ------------------------------------------------------------------------------
+# [Agent 6] Policy Agent (정치/법안/규제/선거/관세 전담팀)
+# ------------------------------------------------------------------------------
 def run_policy_agent(ticker: str, raw_ticker_news: list = None) -> AgentReport:
     try:
         sector = _get_sector(ticker)
         news = list(_fetch_policy_news() or [])
-
+        # 종목 개별 뉴스 중 정책·규제·관세 관련 헤드라인도 함께 병합 검사
         if raw_ticker_news:
             for item in raw_ticker_news[:15]:
                 news.append({
@@ -3916,6 +4113,10 @@ def run_policy_agent(ticker: str, raw_ticker_news: list = None) -> AgentReport:
         LOG.debug("Policy agent error for %s: %s", ticker, e)
         return AgentReport("Policy", 0, "NEUTRAL", "🏛️ 정책 중립", {"sector": "", "matched": []})
 
+
+# ------------------------------------------------------------------------------
+# [Agent 7] Options Flow Agent (옵션 흐름/감마/이상 콜·풋 거래 전담)
+# ------------------------------------------------------------------------------
 @st.cache_data(ttl=CFG["cache"]["options_flow"])
 def _get_options_flow_data(ticker: str) -> dict:
     t = ticker.strip().upper()
@@ -3968,6 +4169,7 @@ def _get_options_flow_data(ticker: str) -> dict:
         }
     except Exception:
         return {}
+
 
 def run_options_agent(ticker: str, current_price: float, gex_data: dict = None) -> AgentReport:
     flow = _get_options_flow_data(ticker)
@@ -4028,6 +4230,10 @@ def run_options_agent(ticker: str, current_price: float, gex_data: dict = None) 
     })
     return AgentReport("Options", score, status, summary, details)
 
+
+# ------------------------------------------------------------------------------
+# [Agent 8] Onchain Agent (크립토 온체인 BTC/ETH 전담)
+# ------------------------------------------------------------------------------
 @st.cache_data(ttl=CFG["cache"]["onchain"])
 def _fetch_crypto_onchain() -> dict:
     out = {}
@@ -4054,6 +4260,7 @@ def _fetch_crypto_onchain() -> dict:
                 "volume": safe_float(q.get("volume"), 0.0),
             }
     return out
+
 
 def run_onchain_agent(ticker: str) -> AgentReport:
     t = ticker.strip().upper()
@@ -4117,6 +4324,10 @@ def run_onchain_agent(ticker: str) -> AgentReport:
         },
     )
 
+
+# ------------------------------------------------------------------------------
+# [Agent 9] Supply Chain Agent (섹터별 공급망 동반 종목 추적)
+# ------------------------------------------------------------------------------
 @st.cache_data(ttl=CFG["cache"]["supply"])
 def _fetch_supply_basket(sector: str, exclude_ticker: str = "") -> dict:
     peers = [p for p in SUPPLY_MAP.get(sector, []) if p != exclude_ticker.upper()]
@@ -4138,6 +4349,7 @@ def _fetch_supply_basket(sector: str, exclude_ticker: str = "") -> dict:
     changes.sort(key=lambda x: peers.index(x[0]) if x[0] in peers else 99)
     avg = sum(c for _, c in changes) / len(changes)
     return {"sector": sector, "avg_change": round(avg, 2), "peers": changes, "count": len(changes)}
+
 
 def run_supply_agent(ticker: str, sector: str = "") -> AgentReport:
     sec = sector or _get_sector(ticker)
@@ -4171,6 +4383,10 @@ def run_supply_agent(ticker: str, sector: str = "") -> AgentReport:
         },
     )
 
+
+# ------------------------------------------------------------------------------
+# [Agent 10] Squeeze Agent (숏스퀴즈 + 감마스퀴즈 통합 전담)
+# ------------------------------------------------------------------------------
 def run_squeeze_agent_from_eval(squeeze_eval: dict, short_data: dict, gex_data: dict) -> AgentReport:
     sq_score = int(squeeze_eval.get("sq_score", 0))
     if sq_score >= 70:
@@ -4198,6 +4414,10 @@ def run_squeeze_agent_from_eval(squeeze_eval: dict, short_data: dict, gex_data: 
         },
     )
 
+
+# ------------------------------------------------------------------------------
+# [Agent 11] Insider Agent (SEC Form 4 내부자 거래 전담)
+# ------------------------------------------------------------------------------
 @st.cache_data(ttl=CFG["cache"]["insider"])
 def run_insider_agent(ticker: str) -> AgentReport:
     t = ticker.strip().upper()
@@ -4207,6 +4427,7 @@ def run_insider_agent(ticker: str) -> AgentReport:
     buys, sells = [], []
     cutoff = datetime.now() - timedelta(days=90)
 
+    # 1차: Finnhub Insider Transactions API (키 설정 시 초고속)
     if FINNHUB_KEY:
         try:
             u_in = f"https://finnhub.io/api/v1/stock/insider-transactions?symbol={urllib.parse.quote(t)}&token={FINNHUB_KEY}"
@@ -4232,6 +4453,7 @@ def run_insider_agent(ticker: str) -> AgentReport:
         except Exception:
             pass
 
+    # 2차: yfinance insider_transactions
     if not buys and not sells:
         try:
             stock = yf.Ticker(t)
@@ -4320,6 +4542,10 @@ def run_insider_agent(ticker: str) -> AgentReport:
         },
     )
 
+
+# ------------------------------------------------------------------------------
+# [Agent 12] Institutional Agent (13F 메이저 기관 보유 전담)
+# ------------------------------------------------------------------------------
 @st.cache_data(ttl=CFG["cache"]["institutional"])
 def run_institutional_agent(ticker: str) -> AgentReport:
     t = ticker.strip().upper()
@@ -4407,6 +4633,10 @@ def run_institutional_agent(ticker: str) -> AgentReport:
         LOG.debug("Institutional agent skipped for %s: %s", t, e)
         return AgentReport("Institutional", 0, "NEUTRAL", "🏦 기관 데이터 기본 모드", {})
 
+
+# ------------------------------------------------------------------------------
+# [Agent 13] Market Breadth & Relative Strength (RS) & 11-Sector Money Flow Agent ⭐ 21.0 UPGRADE
+# ------------------------------------------------------------------------------
 SECTOR_ETF_MAP = {
     "Technology": ("XLK", "기술/AI"),
     "Healthcare": ("XLV", "바이오/헬스케어"),
@@ -4448,6 +4678,7 @@ SECTOR_REPRESENTATIVE_STOCKS = {
     "XLB": "LIN, FCX, NEM, SHW, APD",
     "XLRE": "PLD, AMT, EQIX, WELL, SPG",
 }
+
 
 @st.cache_data(ttl=CFG["cache"].get("breadth_rs", 600))
 def _fetch_breadth_and_sector_snapshot() -> dict:
@@ -4492,6 +4723,7 @@ def _fetch_breadth_and_sector_snapshot() -> dict:
         ret_1m = ((cur / p_1m) - 1.0) * 100.0 if p_1m > 0 else 0.0
         ret_3m = ((cur / p_3m) - 1.0) * 100.0 if p_3m > 0 else 0.0
 
+        # 달러 거래대금 & 5일 누적 자금 흐름 프록시 (단위: 백만 달러 $M)
         vol_s = df["Volume"].dropna() if "Volume" in df.columns else pd.Series(dtype="float64")
         avg_dvol_m = 0.0
         flow_5d_m = 0.0
@@ -4512,6 +4744,7 @@ def _fetch_breadth_and_sector_snapshot() -> dict:
             except Exception:
                 pass
 
+        # 1주(45%) + 1개월(55%) 결합 섹터 자금 흐름 스코어
         flow_score = round(ret_1w * 0.45 + ret_1m * 0.55, 2)
         return {
             "price": cur,
@@ -4531,11 +4764,13 @@ def _fetch_breadth_and_sector_snapshot() -> dict:
     rsp_m = metrics.get("RSP") or spy_m
     vti_m = metrics.get("VTI") or spy_m
 
+    # 1) RSP vs SPY 스프레드
     rsp_spy_1d = safe_float(rsp_m.get("ret_1d"), 0.0) - safe_float(spy_m.get("ret_1d"), 0.0)
     rsp_spy_1m = safe_float(rsp_m.get("ret_1m"), 0.0) - safe_float(spy_m.get("ret_1m"), 0.0)
     rsp_spy_3m = safe_float(rsp_m.get("ret_3m"), 0.0) - safe_float(spy_m.get("ret_3m"), 0.0)
     vti_spy_1m = safe_float(vti_m.get("ret_1m"), 0.0) - safe_float(spy_m.get("ret_1m"), 0.0)
 
+    # 2) 11개 섹터 자금 흐름 로테이션 & 섹터 확산도
     sector_list = []
     pos_sectors = 0
     for s_sym, s_lbl in GICS_11_SECTOR_LABELS.items():
@@ -4559,6 +4794,7 @@ def _fetch_breadth_and_sector_snapshot() -> dict:
     sector_list.sort(key=lambda x: (-x["flow_score"], -x["ret_1m"], -x["ret_1w"]))
     sector_breadth_ratio = (pos_sectors / len(sector_list)) if sector_list else 0.5
 
+    # 섹터 자금 쏠림 강도 (1위 섹터 vs 꼴찌 섹터 격차 및 1위 섹터 유입 강도)
     flow_intensity = 0.0
     top_inflow_sector = sector_list[0] if sector_list else {}
     top_outflow_sector = sector_list[-1] if sector_list else {}
@@ -4566,6 +4802,7 @@ def _fetch_breadth_and_sector_snapshot() -> dict:
         spread_top_bot = safe_float(top_inflow_sector.get("flow_score"), 0.0) - safe_float(top_outflow_sector.get("flow_score"), 0.0)
         flow_intensity = round(max(0.0, spread_top_bot * 0.65), 2)
 
+    # 3) 종합 시장 호흡 (Breadth 0~100%)
     raw_breadth = 52.0
     raw_breadth += np.clip(rsp_spy_1m * 3.2, -20.0, 18.0)
     raw_breadth += np.clip(rsp_spy_3m * 1.4, -12.0, 12.0)
@@ -4600,6 +4837,7 @@ def _fetch_breadth_and_sector_snapshot() -> dict:
         "top_outflow_sector": top_outflow_sector,
         "spy_daily_rets": spy_daily_rets,
     }
+
 
 def run_breadth_rs_agent(
     ticker: str,
@@ -4638,10 +4876,12 @@ def run_breadth_rs_agent(
     vti_spy_1m = safe_float((snap or {}).get("vti_spy_1m"), 0.0)
     flow_intensity = safe_float((snap or {}).get("flow_intensity"), 0.0)
 
+    # 상대 강도 (RS = 종목 수익률 - SPY 수익률)
     rs_1d_diff = round(stock_1d_ret - spy_1d_ret, 2)
     rs_1m_diff = round(stock_1m_ret - spy_1m_ret, 2)
     rs_3m_diff = round(stock_3m_ret - spy_3m_ret, 2)
 
+    # SPY 하락일 방어력
     down_day_win_rate = 50.0
     down_day_alpha = 0.0
     spy_daily = (snap or {}).get("spy_daily_rets")
@@ -4657,11 +4897,13 @@ def run_breadth_rs_agent(
                 down_day_win_rate = round(float((diff_down > 0).mean() * 100.0), 1)
                 down_day_alpha = round(float(diff_down.mean()), 2)
 
+    # 오닐식 RS Rating (1~99점)
     rs_rating = int(np.clip(
         round(50.0 + rs_3m_diff * 1.15 + rs_1m_diff * 0.75 + (down_day_win_rate - 50.0) * 0.25),
         1, 99
     ))
 
+    # 11개 섹터 자금흐름 매칭
     sec = sector or _get_sector(ticker)
     sec_list = (snap or {}).get("sector_list") or []
     top_sectors = [s["label"] for s in sec_list[:3]]
@@ -4672,6 +4914,7 @@ def run_breadth_rs_agent(
     score = 0.0
     reasons = []
 
+    # 1) 시장 호흡(Breadth) 평가
     if breadth_pct >= 62.0:
         score += 25.0
         reasons.append(f"시장호흡 양호 ({breadth_pct:.0f}% · RSP/SPY +{rsp_spy_1m:.1f}%p)")
@@ -4685,6 +4928,7 @@ def run_breadth_rs_agent(
         score -= 55.0
         reasons.append(f"🚨 시장호흡 극단 붕괴 ({breadth_pct:.0f}% < 30% · 소수종목 쏠림/자금이탈)")
 
+    # 2) 상대강도(RS) 평가
     if rs_3m_diff >= 15.0:
         score += 40.0
         reasons.append(f"🔥 초강세 주도주 (3M RS {rs_3m_diff:+.1f}%p · RS Rating {rs_rating})")
@@ -4698,6 +4942,7 @@ def run_breadth_rs_agent(
         score -= 12.0
         reasons.append(f"🟠 시장 대비 약세 (3M RS {rs_3m_diff:+.1f}%p)")
 
+    # 3) 하락일 방어력 평가
     if down_day_win_rate >= 60.0 or down_day_alpha >= 0.4:
         score += 15.0
         reasons.append(f"🛡️ 지수 하락일 방어력 우수 (승률 {down_day_win_rate:.0f}% · 평균 {down_day_alpha:+.2f}%p)")
@@ -4705,6 +4950,7 @@ def run_breadth_rs_agent(
         score -= 12.0
         reasons.append(f"⚠️ 지수 하락 시 낙폭 과대 (방어율 {down_day_win_rate:.0f}%)")
 
+    # 4) 11대 섹터 자금흐름(Money Flow) 가산/감점
     total_sec_cnt = len(sec_list) if sec_list else 11
     if my_sec_rank is not None and my_sec_rank <= 3:
         score += 14.0
@@ -4715,6 +4961,7 @@ def run_breadth_rs_agent(
 
     score_int = max(-100, min(100, int(round(score))))
 
+    # Chart / Master 가산점 산출 (RS > 0인 시장 주도주에 +4 ~ +15점 부스트)
     if rs_3m_diff > 0 and breadth_pct >= 30.0:
         rs_leader_bonus = min(15.0, max(4.0, round(rs_3m_diff * 0.55 + (5.0 if down_day_win_rate >= 60 else 0.0), 1)))
     elif rs_3m_diff <= -12.0:
@@ -4772,6 +5019,10 @@ def run_breadth_rs_agent(
         },
     )
 
+
+# ------------------------------------------------------------------------------
+# [Agent 14] Global Intermarket Agent (글로벌 마켓 코릴레이션 & 구리/금·달러·장단기금리 전담) ⭐ NEW
+# ------------------------------------------------------------------------------
 @st.cache_data(ttl=CFG["cache"].get("intermarket", 600))
 def _fetch_intermarket_snapshot() -> dict:
     """
@@ -4805,6 +5056,7 @@ def _fetch_intermarket_snapshot() -> dict:
                 q_map[s] = m
 
     return q_map
+
 
 def run_intermarket_agent(ticker: str, indices: list = None, im_snap: dict = None) -> AgentReport:
     """
@@ -4847,6 +5099,7 @@ def run_intermarket_agent(ticker: str, indices: list = None, im_snap: dict = Non
     score = 0.0
     reasons = []
 
+    # 1) 달러인덱스(DXY/UUP) 평가
     if dxy_1m >= 2.5 or dxy_1d >= 0.8:
         score -= 25.0
         reasons.append(f"💵 강달러 발작 (UUP 1M {dxy_1m:+.1f}% · 외국인 수급 역풍)")
@@ -4856,6 +5109,7 @@ def run_intermarket_agent(ticker: str, indices: list = None, im_snap: dict = Non
     else:
         reasons.append(f"💵 달러 보합 (1M {dxy_1m:+.1f}%)")
 
+    # 2) 구리/금 비율 (Dr. Copper vs Gold) 평가
     if copper_gold_1m >= 2.0 or copper_gold_1d >= 1.0:
         score += 25.0
         reasons.append(f"🥉 구리/금 비율 상승 ({copper_gold_1m:+.1f}%p · 실물경기 확장 신호)")
@@ -4865,6 +5119,7 @@ def run_intermarket_agent(ticker: str, indices: list = None, im_snap: dict = Non
     else:
         reasons.append(f"⚖️ 구리/금 비율 중립 ({copper_gold_1m:+.1f}%p)")
 
+    # 3) 국채 금리 및 장단기 금리차 평가
     if tnx_px >= 4.65 and safe_float(tnx.get("chg_1d"), 0.0) >= 1.5:
         score -= 20.0
         reasons.append(f"🏦 10년물 금리 발작 ({tnx_px:.2f}% · 성장주 밸류 부담)")
@@ -4872,6 +5127,7 @@ def run_intermarket_agent(ticker: str, indices: list = None, im_snap: dict = Non
         score += 10.0
         reasons.append(f"🏦 국채금리 안정 ({tnx_px:.2f}% · 장단기차 {yield_spread:+.2f}%p)")
 
+    # 4) 글로벌 증시(유럽 VGK / 중국 FXI) 동조화 평가
     if global_eq_1m >= 2.0:
         score += 15.0
         reasons.append(f"🌍 유럽·중국 증시 동반 강세 (평균 {global_eq_1m:+.1f}%)")
@@ -4912,8 +5168,12 @@ def run_intermarket_agent(ticker: str, indices: list = None, im_snap: dict = Non
         },
     )
 
-MACRO_EVENT_CALENDAR = [
 
+# ------------------------------------------------------------------------------
+# [Agent 15] Macro Event Risk Agent (FOMC · CPI · 비농업고용 NFP · PCE 빅이벤트 캘린더 전담) ⭐ NEW
+# ------------------------------------------------------------------------------
+MACRO_EVENT_CALENDAR = [
+    # 2025-2027 주요 FOMC / CPI / NFP / PCE 공식 일정 사전 (미국 동부 기준)
     ("2026-01-09", "비농업 고용지표 (NFP)", "HIGH"),
     ("2026-01-14", "미국 소비자물가지수 (CPI)", "CRITICAL"),
     ("2026-01-28", "FOMC 기준금리 결정 & 파월 기자회견", "CRITICAL"),
@@ -4961,6 +5221,7 @@ MACRO_EVENT_CALENDAR = [
     ("2026-12-23", "개인소비지출 (PCE) 물가지수", "HIGH"),
 ]
 
+
 def run_macro_event_agent(ref_date=None) -> AgentReport:
     """
     ⭐ [Agent 15] 매크로 경제 이벤트 캘린더 (Macro Event Risk) 에이전트:
@@ -4983,6 +5244,7 @@ def run_macro_event_agent(ref_date=None) -> AgentReport:
         except Exception:
             pass
 
+    # 만약 캘린더 범위를 벗어난 날짜일 경우 매월 정기 주기로 자동 생성 (10~13일 CPI, 첫째 금요일 NFP, 말일 PCE)
     if not upcoming:
         for offset in range(0, 35):
             cand = ny_today + timedelta(days=offset)
@@ -5039,6 +5301,10 @@ def run_macro_event_agent(ref_date=None) -> AgentReport:
         },
     )
 
+
+# ------------------------------------------------------------------------------
+# [Agent 16] Retail & Social Sentiment Agent (소셜 센티멘트 & 개미 수급/멘션 폭발 전담) ⭐ NEW
+# ------------------------------------------------------------------------------
 @st.cache_data(ttl=CFG["cache"].get("social", 600))
 def _fetch_social_buzz_data(ticker: str, company_name: str = "") -> dict:
     """
@@ -5051,7 +5317,7 @@ def _fetch_social_buzz_data(ticker: str, company_name: str = "") -> dict:
 
     posts = []
     seen = set()
-
+    # Reddit Search RSS (WallStreetBets + stocks + investing 최근 멘션)
     try:
         q_rd = f'"{t}" (site:reddit.com/r/wallstreetbets OR site:reddit.com/r/stocks OR site:reddit.com/r/investing OR "Stocktwits") when:3d'
         u_rd = f"https://news.google.com/rss/search?q={urllib.parse.quote(q_rd)}&hl=en-US&gl=US&ceid=US:en"
@@ -5085,6 +5351,7 @@ def _fetch_social_buzz_data(ticker: str, company_name: str = "") -> dict:
         "posts": posts[:5],
     }
 
+
 def run_social_sentiment_agent(
     ticker: str,
     vol_ratio: float = 1.0,
@@ -5106,6 +5373,7 @@ def run_social_sentiment_agent(
     bull_b = int((buzz or {}).get("bull_buzz", 0))
     bear_b = int((buzz or {}).get("bear_buzz", 0))
 
+    # 리테일 관심도(Attention) & 버블 지수 (0~100)
     hype_index = int(np.clip(
         round(
             min(40.0, m_cnt * 4.0 + raw_news_cnt * 1.5)
@@ -5165,6 +5433,10 @@ def run_social_sentiment_agent(
         },
     )
 
+
+# ------------------------------------------------------------------------------
+# [Chief AI Manager] 16개 전담팀 통합 & 11단계 Veto 컨트롤 타워 (RS 주도주 + 스마트머니/소셜 시너지 반영)
+# ------------------------------------------------------------------------------
 def run_chief_manager(
     ticker: str,
     current_price: float,
@@ -5220,7 +5492,8 @@ def run_chief_manager(
                     "insider": 0.06, "institutional": 0.05, "breadth": 0.10,
                     "intermarket": 0.06, "event": 0.06, "social": 0.02},
     }
-
+    # ⭐ [21.0 펀드 퀀트 엔진 1] 확률적 레짐 소프트 블렌딩 (Regime Soft Blending)
+    # 하드 버킷(if regime == 'BULL') 대신 매크로 점수(-100~+100)에 따라 인접 레짐 가중치를 선형 보간
     w_bull = base_weights.get("BULL", base_weights.get("NEUTRAL", {}))
     w_neut = base_weights.get("NEUTRAL", {})
     w_bear = base_weights.get("BEAR", w_neut)
@@ -5239,12 +5512,14 @@ def run_chief_manager(
     else:
         weights = dict(base_weights.get(regime, w_neut))
 
+    # ⭐ [21.0 펀드 퀀트 엔진 2] 섹터 자금 흐름 쏠림 강도(Flow Intensity)에 따른 BreadthRS 동적 부스팅
     sector_flow_intensity = safe_float(breadth_r.details.get("flow_intensity"), 0.0)
     if sector_flow_intensity >= 5.0:
         weights["breadth"] = weights.get("breadth", 0.10) * 1.60
     elif sector_flow_intensity >= 3.0:
         weights["breadth"] = weights.get("breadth", 0.10) * 1.30
 
+    # ⭐ [21.0 펀드 퀀트 엔진 3] 실시간 메타러닝(Meta-Learning) — 16개 팀 최근 정답률 기반 동적 가중치 보정
     if "db_get_team_health_summary" in globals():
         try:
             th_map = db_get_team_health_summary(days=45)
@@ -5266,6 +5541,7 @@ def run_chief_manager(
         except Exception:
             pass
 
+    # 온체인: 크립토 종목일 때만 15% 활성화
     if onchain_r.details.get("applicable"):
         total_others = sum(v for k, v in weights.items() if k != "onchain" and v > 0)
         if total_others > 0:
@@ -5274,6 +5550,7 @@ def run_chief_manager(
                     weights[k] = weights[k] * 0.85 / total_others
         weights["onchain"] = 0.15
 
+    # 공급망: 미적용 섹터는 가중치 0으로 제외 후 정규화
     if not supply_r.details.get("applicable"):
         weights["supply"] = 0.0
 
@@ -5281,6 +5558,7 @@ def run_chief_manager(
     if total_w > 0:
         weights = {k: round(v / total_w, 4) for k, v in weights.items()}
 
+    # ⭐ [18.0~20.0] 주도주 RS 가산점 + 스마트머니×소셜 시너지 + 추가 세계 대가 철학(Wyckoff 등) 가산점
     rs_bonus = safe_float(breadth_r.details.get("rs_leader_bonus"), 0.0)
     synergy_bonus = 4.0 if social_r.details.get("smart_money_synergy") else 0.0
     extra_m_bonus = safe_float(master_r.details.get("extra_master_bonus"), 0.0)
@@ -5326,6 +5604,7 @@ def run_chief_manager(
     breadth_pct = safe_float(breadth_r.details.get("breadth_pct"), 50.0)
     rs_3m_diff = safe_float(breadth_r.details.get("rs_3m_diff"), 0.0)
 
+    # ⭐ [20.0] 매매일지 행동재무학 편향(FOMO/복수매매) 자가 반성 감점 연동
     journal_bias_penalty = 0.0
     if veto_cfg.get("journal_bias_link", True) and "analyze_trade_journal" in globals():
         try:
@@ -5348,6 +5627,7 @@ def run_chief_manager(
     v8_thresh = safe_float(veto_cfg.get("veto8_threshold"), 30.0)
     chart_only_veto_on = bool(veto_cfg.get("chart_only_veto", False))
 
+    # ===== 11단계(+자가진화 Veto #12) 기관급 Veto 거부권 우선순위 =====
     veto_Checks = [
         (data_r.status == "DANGER", "Veto #1 [Data]", f"데이터 오류: {data_r.summary}", "🚨 데이터 오류"),
         (news_r.status == "DANGER", "Veto #2 [News]", f"치명적 뉴스 악재: {news_r.summary}", "🚨 악재 투매 경보"),
@@ -5385,7 +5665,7 @@ def run_chief_manager(
 
     sb_thresh = safe_float(veto_cfg.get("strong_buy_threshold"), 45.0)
     b_thresh = safe_float(veto_cfg.get("bear_buy_threshold"), 20.0) if regime == "BEAR" else safe_float(veto_cfg.get("buy_threshold"), 20.0)
-    watch_thresh = max(10.0, b_thresh - 8.0)
+    watch_thresh = max(10.0, b_thresh - 8.0)  # B급 관찰 리스트(Watchlist) 기준 (기본 12.0점)
     if total >= sb_thresh:
         action, base_pct, meta, badge = "🟢 STRONG_BUY", 25.0, "🔥 16팀 합산 A+급 강력 매수", "badge-green"
     elif total >= b_thresh:
@@ -5397,6 +5677,7 @@ def run_chief_manager(
     else:
         action, base_pct, meta, badge = "⚪ WAIT", 0.0, "⏸️ 관망 / 타점 대기", "badge-blue"
 
+    # ⭐ [21.0 펀드 퀀트 엔진 4] 역변동성(1/Vol) + 쿼터 켈리(Quarter-Kelly) 결합 자금 관리
     vol_pct = (atr / current_price) * 100.0 if current_price > 0 else 3.0
     inv_vol_pct = min(base_pct, base_pct * (2.5 / max(vol_pct, 2.0))) if base_pct > 0 else 0.0
     kelly_mult = 1.0
@@ -5413,15 +5694,17 @@ def run_chief_manager(
         except Exception:
             pass
     pos_pct = round(min(25.0, inv_vol_pct * kelly_mult), 1) if base_pct > 0 else 0.0
-
+    # 만약 3일 이내 매크로 이벤트(BEARISH)가 있으면 권장 비중을 절반으로 자동 축소
     if event_r.status == "BEARISH" and pos_pct > 0:
         pos_pct = round(pos_pct * 0.5, 1)
     position_size = f"계좌의 {pos_pct:.1f}% (쿼터켈리·역변동성)" if pos_pct > 0 else "0% (현금 관망)"
 
+    # 조지 소로스 재료소진 익절 규칙
     if news_r.status == "BULLISH" and safe_float(chart_r.details.get("rsi"), 50.0) >= 72.0 and total >= 30:
         action, meta, badge = "🔵 TAKE_PROFIT", "🔵 소로스식 재료소진 분할익절", "badge-blue"
         position_size = "보유 물량 40~50% 분할 익절"
 
+    # 더블 스퀴즈 점화 오버라이드
     if squeeze_r.details.get("sq_score", 0) >= 75 and news_r.status != "DANGER":
         action, meta, badge = "🌋 SQUEEZE_HOLD", "🌋 더블 스퀴즈 오버슈팅 추종", "badge-orange"
         position_size = f"보유 유지 + 코어 트레일링 ({pos_pct:.0f}% 한도)"
@@ -5454,6 +5737,7 @@ def run_chief_manager(
         weights_used=weights,
     )
 
+
 def _get_custom_team_weight(team_name: str) -> float:
     """
     [패치 #5 안전장치] 커스텀 팀의 검증된 모의매매 표본 수 및 정답률에 따른 3단계 안전 가중치:
@@ -5478,6 +5762,7 @@ def _get_custom_team_weight(team_name: str) -> float:
     except Exception:
         pass
     return 0.01
+
 
 def execute_12_agents_parallel(
     ticker: str,
@@ -5525,6 +5810,7 @@ def execute_12_agents_parallel(
     squeeze_r = run_squeeze_agent_from_eval(squeeze_eval, short_data, gex_data)
     event_r = run_macro_event_agent()
 
+    # 병렬 I/O 실행 (Policy, Options, Onchain, Supply, Insider, Institutional, BreadthRS, Intermarket, Social Buzz)
     with ThreadPoolExecutor(max_workers=8) as ex:
         f_pol = ex.submit(run_policy_agent, ticker, raw_cand)
         f_opt = ex.submit(run_options_agent, ticker, current_price, gex_data)
@@ -5573,7 +5859,10 @@ def execute_12_agents_parallel(
         options_r, onchain_r, supply_r, squeeze_r, insider_r, institutional_r,
         breadth_r, intermarket_r, event_r, social_r,
     )
-
+    # ⭐ [21.0] AI AS 센터에서 생성한 신규 커스텀 팀(agent_custom_*.py) 동적 로딩 및 매니저 합산 연결
+    # - 결함 #1 해결: dict 반환 자동 변환 + hasattr Duck Typing 지원 (모듈 간 클래스 불일치 100% 방지)
+    # - 결함 #2 해결: 스크립트 디렉토리(base_dir)와 현재 작업 디렉토리(os.getcwd()) 이중 스캔
+    # - 참고 #3 반영: 커스텀 팀 로드/실행 오류 발생 시 st.session_state["custom_agent_errors"]에 기록하여 Tab 9에 노출
     try:
         import importlib.util
         import inspect
@@ -5634,7 +5923,7 @@ def execute_12_agents_parallel(
                                 if c_rep is not None and hasattr(c_rep, "name") and hasattr(c_rep, "score"):
                                     final_dec.agent_reports.append(c_rep)
                                     if not final_dec.veto_triggered:
-
+                                        # ⭐ [21.0 완전자동화 패치 #5 + 안전장치] 커스텀 팀 정답률 검증 기반 3단계 가중치(0% / 1% / 3% / 5%) 및 액션 재판정
                                         c_weight = _get_custom_team_weight(str(c_rep.name))
                                         if isinstance(c_rep.details, dict):
                                             c_rep.details["custom_weight"] = c_weight
@@ -5689,6 +5978,10 @@ def execute_12_agents_parallel(
         db_log_chief_snapshot(final_dec, current_price)
     return final_dec
 
+
+# ------------------------------------------------------------------------------
+# [Journal Agent] 실전 매매일지 통계 & 8대 잘못된 매매 습관(Behavioral Biases) 진단
+# ------------------------------------------------------------------------------
 def analyze_trade_journal() -> AgentReport:
     """매매일지 DB를 분석하여 기법별·심리별·종목별 성과 통계 + 8대 매매 습관 편향 진단을 반환."""
     entries = db_get_journal_entries(limit=500)
@@ -5712,6 +6005,7 @@ def analyze_trade_journal() -> AgentReport:
     profit_factor = (gross_win / gross_loss) if gross_loss > 0 else (99.0 if gross_win > 0 else 0.0)
     expectancy = (win_rate / 100.0) * avg_win - (1.0 - win_rate / 100.0) * avg_loss
 
+    # 1) 6대 대가 기법별 성과
     strategy_stats = []
     for strat, group in df.groupby("적용기법"):
         g = np.array([safe_float(x) for x in group["실현손익($)"].values], dtype="float64")
@@ -5730,6 +6024,7 @@ def analyze_trade_journal() -> AgentReport:
         })
     strategy_stats.sort(key=lambda x: -x["총손익"])
 
+    # 2) 심리상태별 성과
     emotion_stats = []
     for emo, group in df.groupby("심리상태"):
         e = np.array([safe_float(x) for x in group["실현손익($)"].values], dtype="float64")
@@ -5744,6 +6039,7 @@ def analyze_trade_journal() -> AgentReport:
         })
     emotion_stats.sort(key=lambda x: -x["총손익"])
 
+    # 3) 종목별 성과
     ticker_stats = []
     for tk, group in df.groupby("티커"):
         t_arr = np.array([safe_float(x) for x in group["실현손익($)"].values], dtype="float64")
@@ -5757,6 +6053,7 @@ def analyze_trade_journal() -> AgentReport:
         })
     ticker_stats.sort(key=lambda x: -x["총손익"])
 
+    # 4) ⚠️ 잘못된 매매 습관 자동 지적 (8대 Behavioral Biases)
     biases = []
 
     fomo_df = df[df["심리상태"].astype(str).str.contains("FOMO", na=False)]
@@ -5882,6 +6179,7 @@ def analyze_trade_journal() -> AgentReport:
             "signal_stats": signal_stats,
         },
     )
+
 
 def render_chief_control_tower_ui(chief: ChiefDecision):
     """Tab 1에 표시되는 16대 에이전트 통합 컨트롤 타워(4x4 그리드) & 11단계 Veto 카드."""
@@ -6070,6 +6368,10 @@ def render_chief_control_tower_ui(chief: ChiefDecision):
             else:
                 st.caption("• 크립토 직접 연동 종목 아님 (온체인 가중치 0% 자동 제외)")
 
+
+# ==============================================================================
+# 14) TAB 1: 개별 종목 분석 (⭐ 실시간 시세 동기화 + [16.4] 과거 호악재 패스 & 중대악재 방어)
+# ==============================================================================
 def render_sector_flow_radar_ui(chief: ChiefDecision):
     """
     ⭐ [21.0 NEW] Tab 1에 표시되는 미국/나스닥 11대 GICS 섹터 자금 흐름 레이더 (Sector Fund Flow Radar).
@@ -6171,30 +6473,21 @@ def render_sector_flow_radar_ui(chief: ChiefDecision):
         </div>
     </div>""")
 
+
 def render_tab_analysis(indices, usd_krw):
     if "selected_ticker" not in st.session_state:
         st.session_state.selected_ticker = "IREN"
-    if st.session_state.get("_scanner_jump_ticker"):
-        jumped = str(st.session_state.pop("_scanner_jump_ticker")).upper().strip()
-        if jumped:
-            st.session_state.selected_ticker = jumped
-            st.session_state["analysis_ticker_input_box"] = jumped
-    if "analysis_ticker_input_box" not in st.session_state:
-        st.session_state["analysis_ticker_input_box"] = st.session_state.selected_ticker
     c_inp, c1, c2, c3, c4, c5, c6, c_ref = st.columns([2.2, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.65])
+    with c_inp:
+        ticker_input = st.text_input("종목 코드 입력", value=st.session_state.selected_ticker,
+                                     label_visibility="collapsed", placeholder="예: TSLA")
+        ticker = ticker_input.upper().strip()
     chips = [(c1, "NVDA"), (c2, "TSLA"), (c3, "PLTR"), (c4, "MSTR"), (c5, "IREN"), (c6, "IONQ")]
     for col, q in chips:
         with col:
             if st.button(q, key=f"chip_{q}", use_container_width=True):
                 st.session_state.selected_ticker = q
-                st.session_state["analysis_ticker_input_box"] = q
                 st.rerun()
-    with c_inp:
-        ticker_input = st.text_input("종목 코드 입력", key="analysis_ticker_input_box",
-                                     label_visibility="collapsed", placeholder="예: TSLA")
-        ticker = ticker_input.upper().strip()
-        if ticker:
-            st.session_state.selected_ticker = ticker
     with c_ref:
         if st.button("🔄", key="top_refresh_btn", help="실시간 시세 강제 새로고침", use_container_width=True):
             st.cache_data.clear()
@@ -6288,6 +6581,7 @@ def render_tab_analysis(indices, usd_krw):
     use_llm = bool(os.getenv("OPENAI_API_KEY"))
     cat = analyze_macro_and_stock_catalysts(ticker, indices_key, company_name=comp_name, use_llm=use_llm)
 
+    # ⭐⭐⭐ [16.4] 과거 악재 가격 회복 보정 + 주가 역행(Sell-the-news) 과거 호재 자동 패스 ⭐⭐⭐
     recovery_bonus = 0
     recovery_note = ""
     bull_fade_penalty = 0.0
@@ -6305,6 +6599,7 @@ def render_tab_analysis(indices, usd_krw):
                         recovery_bonus = int(CFG["news"]["recovery_bonus"])
                         recovery_note = f"과거 악재({newest_bad_h:.0f}h 전) 후 +{rec_pct:.1f}% 반등 → 악재 선반영 패스 (+{recovery_bonus}점 환급)"
 
+        # 호재 기사가 18시간 이상 지났는데 주가가 20일선 아래에서 -2% 이상 하락 중이면 '재료 소멸(과거 호재)'로 가산점 패스
         newest_bull_h = safe_float(cat.get("bull_newest_hours", 9999.0), 9999.0)
         if cat.get("bull_score", 0.0) > 0 and newest_bull_h >= 18.0 and (current_price < ema20 and change_pct <= -2.0):
             bull_fade_penalty = float(cat.get("bull_score", 0.0))
@@ -6314,6 +6609,7 @@ def render_tab_analysis(indices, usd_krw):
     if recovery_note:
         catalyst_summary_display.append(f"💡 {recovery_note}")
 
+    # 중대 악재 1건 이상이거나 최근 48h 악재 2건 이상이면 즉시 악재 경보 발동!
     has_bad = (cat.get("severe_bad_hits", 0) >= 1 or cat.get("bad_news_hits", 0) >= 2) and recovery_bonus == 0
 
     noise_eval = evaluate_holding_noise_filter(ticker, hist)
@@ -6341,6 +6637,7 @@ def render_tab_analysis(indices, usd_krw):
     else:
         weinstein_stage, weinstein_status = "1단계 바닥 매집", "STAGE 1 🟡"
 
+    # ⭐ 중대 악재(has_bad)가 있을 때는 RSI <= 25라도 PANIC BUY(공포 역발상 매수) 신호를 차단!
     is_panic = (current_price < ema20 and rsi <= 25.0) and (not has_bad)
     if current_price < ema20 and rsi <= 25.0 and has_bad:
         livermore_status = "악재투매 위험 🔴"
@@ -6443,6 +6740,7 @@ def render_tab_analysis(indices, usd_krw):
         seed_alloc = "계좌의 5~10%"
         sizing_rule = "박스 상단 50% 익절, 돌파 시 잔량 홀딩"
 
+    # ⭐ [18.0] 13대 전문 에이전트(시장호흡 & RS 포함) 병렬 실행 & Chief AI Manager (9단계 Veto) 컨트롤 타워
     chief_decision = execute_12_agents_parallel(
         ticker=ticker,
         hist=hist,
@@ -6902,6 +7200,10 @@ def render_tab_analysis(indices, usd_krw):
             <a href="{n['link']}" target="_blank" rel="noopener noreferrer" style="color:#e2e8f0; font-size:12px; font-weight:700; text-decoration:none;">{n['title']}</a>
         </div>""")
 
+
+# ==============================================================================
+# 15) TAB 2: 보유 모니터
+# ==============================================================================
 def render_tab_holdings_monitor(usd_krw):
     render_html("""
     <div style="margin-bottom:12px;">
@@ -7033,77 +7335,69 @@ def render_tab_holdings_monitor(usd_krw):
             </div>
         </div>""")
 
+
+# ==============================================================================
+# 16) TAB 3: 스캐너
+# ==============================================================================
 def render_tab_scanner():
     render_html("""
     <div style="margin-bottom:12px;">
-        <div style="font-size:18px; font-weight:800; color:#fff;">🎯 멀티 종목 병렬 스캐너 (yfinance 3개월 병렬 실시간 분석)</div>
-        <div style="font-size:12px; color:#94a3b8; margin-top:2px;">yfinance 3개월 병렬 데이터 기반 당일 등락률 · 1개월 수익률 · 6대 거장 + Wilder RSI + ATR 트레일링 스탑 · 우측 [🔍 바로 분석] 클릭 시 개별분석 탭 즉시 연동</div>
+        <div style="font-size:18px; font-weight:800; color:#fff;">🎯 100종목 스캐너</div>
+        <div style="font-size:12px; color:#94a3b8; margin-top:2px;">6대 거장 + Wilder RSI + ATR 트레일링 스탑</div>
     </div>""")
-    default_tickers = "NVDA TSLA AAPL MSFT AMZN GOOGL META PLTR AMD AVGO TSM ARM MU SMCI MSTR COIN MARA RIOT IREN CLSK IONQ RKLB ASTS CRWD PANW NFLX SOFI HOOD SNOW LLY"
-    txt = st.text_area("스캔할 티커 입력 (공백 또는 쉼표로 구분)", value=default_tickers, height=75, key="s_txt")
-    b1, b2 = st.columns([1, 2.2])
-    with b1:
-        start = st.button("🚀 병렬 스캔 실행", type="primary", use_container_width=True, key="btn_run_parallel_scan")
-    with b2:
-        filt = st.radio("필터", ["전체", "🔥 STRONG BUY", "🟢 PANIC BUY", "매수 전체", "🟡 B급 관찰 (WATCH)"], horizontal=True, key="s_filt")
+    presets = {
+        "🔥 서학개미 Top 100": "NVDA TSLA AAPL MSFT AMZN GOOGL META PLTR AMD COIN MSTR SOXL TQQQ SMCI MARA RIOT IREN CLSK IONQ RKLB ASTS ARM TSM AVGO CRWD PANW NFLX DIS INTC SOFI HOOD OPEN LCID RIVN U RBLX SNOW BABA NIO XPEV LI BIDU PDD BILI UPST AFRM SQ PYPL SHOP SE CPNG PATH AI PLUG ENPH SEDG FCEL CHPT BLNK QS DKNG PENN WYNN LVS CCL RCL NCLH UAL DAL AAL LUV BA RTX LMT GD NOC XOM CVX OXY SLB HAL COP F GM TM HMC NKE LULU SBUX MCD KO PEP PG JNJ PFE MRK LLY UNH ABBV",
+        "🤖 AI & 반도체": "NVDA AMD TSM AVGO ARM ASML QCOM MU INTC MRVL AMAT LRCX KLAC ON NXPI ADI MPWR SMCI",
+        "⚡ 양자 & 우주": "IONQ RGTI QBTS QUBT RKLB LUNR ASTS PL RDYW BKSY SPIR",
+        "💎 크립토": "MSTR COIN MARA RIOT IREN CLSK CIFR HUT BITF CORZ WULF BTDR",
+    }
+    p1, p2 = st.columns([1, 2])
+    with p1: sel = st.selectbox("프리셋", list(presets.keys()), key="s_preset")
+    with p2: txt = st.text_area("티커", value=presets[sel], height=70, key="s_txt")
+    b1, b2 = st.columns([1, 2])
+    with b1: start = st.button("🚀 스캔", type="primary", use_container_width=True)
+    with b2: filt = st.radio("필터", ["전체", "🔥 STRONG BUY", "🟢 PANIC BUY", "매수 전체", "🟡 B급 관찰 (WATCH)"], horizontal=True, key="s_filt")
     if start or "s_res" in st.session_state:
         if start:
-            with st.spinner("yfinance 병렬 엔진으로 3개월 데이터를 받아와 당일 등락률 및 1개월 수익률을 실시간 분석 중입니다..."):
+            with st.spinner("스캔 중..."):
                 st.session_state.s_res = scan_watchlist(txt)
         data = st.session_state.get("s_res", [])
         if not data:
-            st.warning("스캔 결과가 없습니다. 티커를 확인해 주세요.")
+            st.warning("결과 없음")
             return
         ff = data
-        if filt == "🔥 STRONG BUY":
-            ff = [r for r in data if "STRONG" in r['action']]
-        elif filt == "🟢 PANIC BUY":
-            ff = [r for r in data if "PANIC" in r['action']]
-        elif filt == "매수 전체":
-            ff = [r for r in data if r.get('is_buy')]
-        elif filt == "🟡 B급 관찰 (WATCH)":
-            ff = [r for r in data if r.get('is_watch') or "WATCH" in r.get('action', '')]
-        render_html(f"""<div style="margin:12px 0;font-size:13px;font-weight:700;">총 {len(data)}개 종목 3개월 병렬 분석 완료 — 조건 부합 <b style="color:#38bdf8;">{len(ff)}개</b> 포착</div>""")
-        for idx_s, it_ in enumerate(ff):
+        if filt == "🔥 STRONG BUY": ff = [r for r in data if "STRONG" in r['action']]
+        elif filt == "🟢 PANIC BUY": ff = [r for r in data if "PANIC" in r['action']]
+        elif filt == "매수 전체": ff = [r for r in data if r.get('is_buy')]
+        elif filt == "🟡 B급 관찰 (WATCH)": ff = [r for r in data if r.get('is_watch') or "WATCH" in r.get('action', '')]
+        render_html(f"""<div style="margin:12px 0;font-size:13px;font-weight:700;">총 {len(data)}개 중 <b style="color:#38bdf8;">{len(ff)}개</b> 포착</div>""")
+        for it_ in ff:
             cc = "#10b981" if it_['change_pct'] >= 0 else "#f43f5e"
             cs = "+" if it_['change_pct'] >= 0 else ""
-            ret_1m = safe_float(it_.get('ret_1m_pct'), 0.0)
-            c1m = "#10b981" if ret_1m >= 0 else "#f43f5e"
-            s1m = "+" if ret_1m >= 0 else ""
-            raw_tk = it_.get("raw_ticker") or it_["ticker"]
-            c_card, c_btn = st.columns([5.2, 1.0])
-            with c_card:
-                render_html(f"""
-                <div style="background:#0f172a; border:1px solid #1e293b; border-radius:10px; padding:10px 14px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                    <div style="display:flex; align-items:center; gap:10px; min-width:160px;">
-                        <span style="font-size:16px; font-weight:800; font-family:'JetBrains Mono'; color:#fff;">{it_['ticker']}</span>
-                        <span class="badge {it_['badge']}">{it_['action']}</span>
-                    </div>
-                    <div class="mono" style="text-align:right; min-width:155px;">
-                        <div style="font-size:14px; font-weight:800; color:#fff;">${it_['price']:,.2f}</div>
-                        <div style="font-size:11px;">
-                            <span style="color:{cc}; font-weight:700;">당일 {cs}{it_['change_pct']:.2f}%</span>
-                            <span style="color:#475569;"> | </span>
-                            <span style="color:{c1m}; font-weight:700;">1개월 {s1m}{ret_1m:.2f}%</span>
-                        </div>
-                    </div>
-                    <div style="font-size:11px; color:#94a3b8; display:flex; gap:12px; flex-wrap:wrap;">
-                        <span>RSI <b class="text-white">{it_['rsi']:.1f}</b></span>
-                        <span>거래량 <b class="text-white">{it_['vol']:.1f}x</b></span>
-                        <span>ATR <b class="text-white">{it_['atr_pct']:.1f}%</b></span>
-                        <span>TS <b style="color:#38bdf8;">-{it_['ts_rec']:.1f}%</b></span>
-                    </div>
-                </div>""")
-            with c_btn:
-                if st.button("🔍 바로 분석", key=f"scan_jump_{raw_tk}_{idx_s}", use_container_width=True):
-                    st.session_state.selected_ticker = raw_tk
-                    st.session_state["analysis_ticker_input_box"] = raw_tk
-                    st.session_state["_scanner_jump_ticker"] = raw_tk
-                    st.session_state["_trigger_switch_to_tab1"] = True
-                    st.rerun()
+            render_html(f"""
+            <div style="background:#0f172a; border:1px solid #1e293b; border-radius:10px; padding:10px 14px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <div style="display:flex; align-items:center; gap:10px; min-width:160px;">
+                    <span style="font-size:16px; font-weight:800; font-family:'JetBrains Mono'; color:#fff;">{it_['ticker']}</span>
+                    <span class="badge {it_['badge']}">{it_['action']}</span>
+                </div>
+                <div class="mono" style="text-align:right; min-width:100px;">
+                    <div style="font-size:14px; font-weight:800; color:#fff;">${it_['price']:,.2f}</div>
+                    <div style="font-size:11px; color:{cc};">{cs}{it_['change_pct']:.2f}%</div>
+                </div>
+                <div style="font-size:11px; color:#94a3b8; display:flex; gap:12px; flex-wrap:wrap;">
+                    <span>RSI <b class="text-white">{it_['rsi']:.1f}</b></span>
+                    <span>거래량 <b class="text-white">{it_['vol']:.1f}x</b></span>
+                    <span>ATR <b class="text-white">{it_['atr_pct']:.1f}%</b></span>
+                    <span>TS <b style="color:#38bdf8;">-{it_['ts_rec']:.1f}%</b></span>
+                </div>
+            </div>""")
         csv = pd.DataFrame(data).to_csv(index=False).encode('utf-8-sig')
-        st.download_button("📥 CSV 다운로드", csv, f"scan_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", "text/csv")
+        st.download_button("📥 CSV", csv, f"scan_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", "text/csv")
 
+
+# ==============================================================================
+# 17) TAB 4: 백테스트
+# ==============================================================================
 def render_tab_backtest():
     render_html("""<div style="margin-bottom:12px;">
     <div style="font-size:18px;font-weight:800;color:#fff;">🧪 전략 백테스트</div>
@@ -7158,6 +7452,10 @@ def render_tab_backtest():
         with st.expander(f"📋 거래 내역 ({len(res['trades'])}건)", expanded=False):
             st.dataframe(pd.DataFrame(res["trades"]), use_container_width=True, hide_index=True)
 
+
+# ==============================================================================
+# 18) TAB 5: WFA
+# ==============================================================================
 def render_tab_wfa():
     render_html("""<div style="margin-bottom:12px;">
     <div style="font-size:18px;font-weight:800;color:#fff;">🔬 Walk-Forward 전진 분석</div>
@@ -7199,6 +7497,10 @@ def render_tab_wfa():
     st.markdown("##### 📊 Fold별 성적")
     st.dataframe(pd.DataFrame(wr["folds"]), use_container_width=True, hide_index=True)
 
+
+# ==============================================================================
+# 19) TAB 6: 리스크
+# ==============================================================================
 def render_tab_portfolio_risk(usd_krw):
     render_html("""<div style="margin-bottom:12px;">
     <div style="font-size:18px;font-weight:800;color:#fff;">📊 포트폴리오 통합 리스크 & 역변동성 리밸런싱</div>
@@ -7261,6 +7563,10 @@ def render_tab_portfolio_risk(usd_krw):
         st.markdown("##### 🔗 상관계수")
         st.dataframe(rep["corr_matrix"], use_container_width=True)
 
+
+# ==============================================================================
+# 20) TAB 7: 매매일지
+# ==============================================================================
 def render_tab_journal(usd_krw):
     db_eval_pending_signals()
     render_html("""
@@ -7353,6 +7659,7 @@ def render_tab_journal(usd_krw):
             st.rerun()
         return
 
+    # ⭐ [17.0] Journal Agent 실행 — 종합 성과 + 8대 잘못된 매매 습관(Behavioral Biases) 자동 진단
     journal_r = analyze_trade_journal()
     jd = journal_r.details
     total_realized = jd["total_pnl"]
@@ -7461,6 +7768,13 @@ def render_tab_journal(usd_krw):
                            file_name=f"trading_journal_{datetime.now().strftime('%Y%m%d')}.csv",
                            mime="text/csv", use_container_width=True)
 
+
+# ==============================================================================
+# [Agent 19] 🤖 모의매매팀 EOD 시뮬레이션 엔진 (Paper Trading Engine — agent_paper.py)
+# - 실시간 데이터 없이도 스윙 투자자의 실제 호흡(일봉 종가 판단 -> 익일 시가 진입 -> 일봉 고저가 청산)과
+#   100% 일치하는 EOD(End-of-Day) Forward & Walk-Forward 모의매매 시스템
+# - Look-ahead Bias(미래 데이터 참조) 원천 차단 + 시가 갭하락/갭상승 반영 + 손절 우선 보수적 판정
+# ==============================================================================
 DEFAULT_PAPER_WATCHLIST = [
     "NVDA", "TSLA", "PLTR", "AMD", "META", "MSTR", "IREN", "IONQ", "RKLB", "ASTS"
 ]
@@ -7471,6 +7785,7 @@ DIRECTIONAL_TEAMS = {
 }
 SAFETY_TEAMS = {"Insider", "Institutional", "Squeeze", "Onchain", "Data"}
 EVENT_TEAMS = {"MacroEvent"}
+
 
 def evaluate_team_correctness(
     agent_name: str,
@@ -7514,6 +7829,7 @@ def evaluate_team_correctness(
         return None, None
 
     return None, None
+
 
 def db_record_team_audit_for_trade(
     trade_id: int,
@@ -7574,6 +7890,7 @@ def db_record_team_audit_for_trade(
     except Exception as e:
         LOG.error("db_record_team_audit_for_trade error: %s", e)
 
+
 def db_insert_paper_trade(pick: dict) -> int:
     """신규 모의매매 픽을 paper_trades 테이블에 저장 (동일 날짜·티커·버전 중복 방지)."""
     try:
@@ -7625,6 +7942,7 @@ def db_insert_paper_trade(pick: dict) -> int:
         LOG.error("db_insert_paper_trade error: %s", e)
         return 0
 
+
 def evaluate_open_paper_positions(max_hold_days: int = 10) -> int:
     """
     미청산(is_evaluated = 0) 모의매매 포지션을 조회하여 신호일(signal_date) 이후의 일봉(T+1 ~ T+N)으로
@@ -7652,6 +7970,7 @@ def evaluate_open_paper_positions(max_hold_days: int = 10) -> int:
             if next_bars.empty:
                 continue
 
+            # T+1일 시가(Open)로 현실적 진입가 보정 (신호일 종가 대비 갭 반영)
             first_bar = next_bars.iloc[0]
             actual_entry_dt = pd.Timestamp(first_bar.name).strftime("%Y-%m-%d")
             open_t1 = safe_float(first_bar.get("Open"), ent_px)
@@ -7671,28 +7990,29 @@ def evaluate_open_paper_positions(max_hold_days: int = 10) -> int:
                 b_close = safe_float(bar.get("Close"), ent_px)
                 b_date_str = pd.Timestamp(b_dt).strftime("%Y-%m-%d")
 
+                # 1) 시가 갭하락 손절 (보수적 최우선)
                 if b_open <= sl_px:
                     exit_price, exit_reason, exit_dt_s, hold_d = b_open, "GAP_STOP (시가갭락손절)", b_date_str, idx_i
                     break
-
+                # 2) 시가 갭상승 목표 도달
                 if b_open >= tp2_px:
                     exit_price, exit_reason, exit_dt_s, hold_d = b_open, "GAP_TARGET_2 (시가갭상2차)", b_date_str, idx_i
                     break
                 if b_open >= tp1_px:
                     exit_price, exit_reason, exit_dt_s, hold_d = b_open, "GAP_TARGET_1 (시가갭상1차)", b_date_str, idx_i
                     break
-
+                # 3) 장중 저가 손절 도달 (보수적으로 고가보다 저가 먼저 체크!)
                 if b_low <= sl_px:
                     exit_price, exit_reason, exit_dt_s, hold_d = sl_px, "STOP (손절선도달)", b_date_str, idx_i
                     break
-
+                # 4) 장중 고가 2차/1차 목표가 도달
                 if b_high >= tp2_px:
                     exit_price, exit_reason, exit_dt_s, hold_d = tp2_px, "TARGET_2 (2차목표달성)", b_date_str, idx_i
                     break
                 if b_high >= tp1_px:
                     exit_price, exit_reason, exit_dt_s, hold_d = tp1_px, "TARGET_1 (1차목표달성)", b_date_str, idx_i
                     break
-
+                # 5) 최대 보유일(타임스탑) 경과 시 종가 청산 (50건 배치 데드락 방지)
                 if idx_i >= max_hold_days:
                     exit_price, exit_reason, exit_dt_s, hold_d = b_close, f"TIME_EXIT ({max_hold_days}일만기청산)", b_date_str, idx_i
                     break
@@ -7724,6 +8044,10 @@ def evaluate_open_paper_positions(max_hold_days: int = 10) -> int:
         except Exception as e:
             LOG.debug("evaluate_open_paper_positions item %s error: %s", tk, e)
 
+    # ⭐ [21.0 완전자동화 패치 #1 + 안전장치]
+    # - 함정 #1 방지: 3건 이상 배치 청산 시에만 주간 리포트(generate_weekly_review) 및 오답 감사 갱신 (단건 청산 시 DB 과부하 방지)
+    # - 함정 #2 방지: 3~4연속 오답은 PENDING(사용자 검토 대기) 유지, 5연속 이상 심각한 오답만 자율 진화 모드에서 자동 반영
+    # - 함정 #3 방지: 동일 팀 24시간 내 재수정 금지(24h 쿨다운)로 무한 루프 완벽 차단
     if closed_cnt >= 3:
         try:
             if "detect_consecutive_errors" in globals():
@@ -7759,6 +8083,7 @@ def evaluate_open_paper_positions(max_hold_days: int = 10) -> int:
             LOG.debug("auto detect_consecutive_errors on close skipped: %s", _e_auto_det)
 
     return closed_cnt
+
 
 def run_daily_paper_trade(watchlist: list = None, max_picks: int = 3, indices: list = None) -> list:
     """
@@ -7855,6 +8180,7 @@ def run_daily_paper_trade(watchlist: list = None, max_picks: int = 3, indices: l
         db_insert_paper_trade(p)
     return top_picks
 
+
 def run_historical_50_paper_simulation(
     watchlist: list = None,
     target_trades: int = 55,
@@ -7899,12 +8225,13 @@ def run_historical_50_paper_simulation(
     if not hist_map:
         return {"inserted": 0, "wins": 0, "losses": 0}
 
+    # 공통 거래일 타임라인 추출 (최근 160거래일 중 T+max_hold_days 여유가 있는 구간)
     all_dates = sorted(set().union(*(df.index[:-max_hold_days - 2] for df in hist_map.values())))
     if len(all_dates) > 130:
         all_dates = all_dates[-130:]
 
     inserted_trades = []
-
+    # 2거래일 간격으로 스캔하여 Top 픽 선정 (실제 run_chart_agent · run_master_agent · evaluate_extra_masters_on_df · run_chief_manager 연동)
     for step_idx in range(0, len(all_dates), 2):
         if len(inserted_trades) >= target_trades:
             break
@@ -7949,6 +8276,7 @@ def run_historical_50_paper_simulation(
                     stk_r20 = ((px / px_20d_ago) - 1.0) * 100.0 if px_20d_ago > 0 else 0.0
                     rs_diff = stk_r20 - spy_r20
 
+                    # ⭐ 실제 에이전트 함수(run_chart_agent, run_master_agent, evaluate_extra_masters_on_df, run_chief_manager) 시점별(Point-in-Time) 호출
                     data_r = AgentReport("Data", 90, "GOOD", f"EOD (${px:,.2f})", {"price": px})
                     chart_r = run_chart_agent(
                         ticker=tk, current_price=px, ema10=ema10, ema20=ema20, ema50=ema50, ema200=ema200,
@@ -8019,6 +8347,7 @@ def run_historical_50_paper_simulation(
                     tot_sc = chief_dec.score
                     ag_map = {r.name: {"score": r.score, "status": r.status} for r in chief_dec.agent_reports}
 
+                    # T+1일 시가(Open) 진입 & T+1..T+max_hold_days 고/저가 청산 (Look-ahead Bias 0%)
                     next_slice = df.iloc[loc + 1 : loc + 1 + max_hold_days]
                     if next_slice.empty:
                         continue
@@ -8121,6 +8450,7 @@ def run_historical_50_paper_simulation(
     losses = sum(1 for t in inserted_trades if t["outcome"] == "LOSS")
     return {"inserted": len(inserted_trades), "wins": wins, "losses": losses}
 
+
 def db_get_paper_stats(period: str = "all", version: str = None) -> dict:
     """기간별(today / week / month / all) 및 버전별 모의매매 성과 통계 집계."""
     clauses = ["is_evaluated = 1"]
@@ -8173,6 +8503,7 @@ def db_get_paper_stats(period: str = "all", version: str = None) -> dict:
         "total_return": round(float(sum(returns)), 2),
     }
 
+
 def db_get_today_paper_picks(limit: int = 6) -> list:
     try:
         with _db_conn() as conn:
@@ -8195,6 +8526,7 @@ def db_get_today_paper_picks(limit: int = 6) -> list:
     except Exception:
         return []
 
+
 def db_get_open_paper_trades() -> list:
     try:
         with _db_conn() as conn:
@@ -8213,6 +8545,7 @@ def db_get_open_paper_trades() -> list:
         ]
     except Exception:
         return []
+
 
 def db_get_recent_closed_paper_trades(limit: int = 15, version: str = None) -> list:
     try:
@@ -8247,6 +8580,7 @@ def db_get_recent_closed_paper_trades(limit: int = 15, version: str = None) -> l
     except Exception:
         return []
 
+
 def db_get_paper_equity_curve() -> pd.DataFrame:
     try:
         with _db_conn() as conn:
@@ -8263,11 +8597,18 @@ def db_get_paper_equity_curve() -> pd.DataFrame:
     except Exception:
         return pd.DataFrame()
 
+
+# ==============================================================================
+# [Agent 20] 🔍 16개 팀 정밀 감사 & 3연속 오답 수정 요청 엔진 (Team Audit — agent_audit.py)
+# - 매니저(Chief AI)가 16개 하위 전담팀의 예측 정확도를 개별 추적
+# - 특정 팀이 3회 이상 연속 오답 제출 시 원인 진단 + 근거 매매 3건 + 파라미터 수정 요청서 자동 발행
+# ==============================================================================
 ALL_16_TEAMS = [
     "Data", "Chart", "Macro", "Master", "News", "Policy",
     "Options", "Onchain", "Supply", "Squeeze", "Insider", "Institutional",
     "BreadthRS", "Intermarket", "MacroEvent", "Social",
 ]
+
 
 def db_get_team_health_summary(days: int = 365) -> dict:
     """16개 전담팀 각각의 최근 정답률(Accuracy), 총 평가 건수, 현재 연속 오답 횟수를 집계합니다."""
@@ -8314,6 +8655,7 @@ def db_get_team_health_summary(days: int = 365) -> dict:
         LOG.error("db_get_team_health_summary error: %s", e)
     return summary
 
+
 def generate_fix_request(team_name: str, error_trades: list, consecutive: int) -> dict:
     """3회 이상 연속 오답이 감지된 팀에 대해 원인 진단 + 근거 매매 3건 + 파라미터 수정안을 생성."""
     regimes = [t.get("regime", "NEUTRAL") for t in error_trades if t.get("regime")]
@@ -8333,7 +8675,7 @@ def generate_fix_request(team_name: str, error_trades: list, consecutive: int) -
         w_key = "event"
 
     cur_w = safe_float((cur_weights.get(dom_regime) or {}).get(w_key), 0.08)
-
+    # 안전장치: 1회 가중치 수정폭 최대 ±20% 이내 제한 (Max Delta 20%)
     reduced_w = round(max(0.02, cur_w * 0.82), 4)
 
     diagnosis_map = {
@@ -8428,6 +8770,7 @@ def generate_fix_request(team_name: str, error_trades: list, consecutive: int) -
         "status": "PENDING",
     }
 
+
 def detect_consecutive_errors(min_consecutive: int = 3) -> list:
     """16개 전담팀의 최근 성과 로그를 전수 검사하여 3연속 이상 오답 팀에 대해 수정 요청서를 발행합니다."""
     requests_out = []
@@ -8451,7 +8794,7 @@ def detect_consecutive_errors(min_consecutive: int = 3) -> list:
 
         for team_name, t_logs in by_team.items():
             if len(t_logs) < 5:
-                continue
+                continue  # 안전장치: 최소 표본 5건 이상일 때만 연속 오답 판정
             consec = 0
             err_list = []
             for item in t_logs:
@@ -8466,6 +8809,7 @@ def detect_consecutive_errors(min_consecutive: int = 3) -> list:
     except Exception as e:
         LOG.error("detect_consecutive_errors error: %s", e)
     return requests_out
+
 
 def db_get_pending_fix_requests() -> list:
     try:
@@ -8487,6 +8831,7 @@ def db_get_pending_fix_requests() -> list:
         ]
     except Exception:
         return []
+
 
 def db_get_fix_request_history(limit: int = 20) -> list:
     try:
@@ -8510,6 +8855,7 @@ def db_get_fix_request_history(limit: int = 20) -> list:
     except Exception:
         return []
 
+
 def apply_fix_request(req: dict) -> str:
     """
     사용자가 승인(또는 자동 진화 모드가 채택)한 팀 수정 요청을 현재 챔피언 매니저 설정에 반영하고
@@ -8530,7 +8876,7 @@ def apply_fix_request(req: dict) -> str:
             reg_k, ag_k = k.split(".", 1)
             if reg_k in weights and ag_k in weights[reg_k]:
                 old_v = safe_float(weights[reg_k][ag_k], 0.05)
-
+                # ±20% Max Delta 안전 캡 적용
                 clamped_v = float(np.clip(safe_float(val, old_v), old_v * 0.80, old_v * 1.20))
                 weights[reg_k][ag_k] = round(clamped_v, 4)
         else:
@@ -8576,6 +8922,7 @@ def apply_fix_request(req: dict) -> str:
         LOG.error("apply_fix_request error: %s", e)
     return new_ver
 
+
 def db_update_fix_request_status(req_id: int, new_status: str):
     try:
         with _db_conn() as conn:
@@ -8587,6 +8934,13 @@ def db_update_fix_request_status(req_id: int, new_status: str):
     except Exception as e:
         LOG.error("db_update_fix_request_status error: %s", e)
 
+
+
+
+# ------------------------------------------------------------------------------
+# ⭐ [21.0 NEW] AI AS 자동수술 & 안전 배포(.bak 백업 -> AST 검증 -> 덮어쓰기) & GitHub 자동 커밋 엔진
+# ------------------------------------------------------------------------------
+# 💡 모델명 안내: 구글/딥시크 최신 API 모델명은 https://ai.google.dev/gemini-api/docs/models 에서 확인·변경 가능합니다.
 AI_MODEL_ROUTING_TABLE = {
     "SIMPLE_GEMINI": {
         "label": "🟢 일반 수정 [무료/저비용] — Gemini 2.5/3 Flash (오타·임계값·단순 로직)",
@@ -8615,7 +8969,6 @@ AI_MODEL_ROUTING_TABLE = {
 }
 
 EDITABLE_TEAM_FILES = [
-    "app.py", "app_main.py",
     "agent_chart.py", "agent_news.py", "agent_breadth.py", "agent_macro.py",
     "agent_master.py", "agent_chief.py", "agent_policy.py", "agent_options.py",
     "agent_onchain.py", "agent_supply.py", "agent_squeeze.py", "agent_insider.py",
@@ -8623,36 +8976,22 @@ EDITABLE_TEAM_FILES = [
     "agent_social.py", "agent_paper.py", "agent_audit.py", "agent_evolution.py",
     "agent_broker_config.py", "agent_robot_queue.py", "agent_robot_audit_bridge.py",
     "agent_swing_overnight.py", "agent_execution_robot.py",
+    "app.py", "app_main.py",
 ]
 
-def _strip_markdown_code_fence(code_text: str) -> str:
-    if not code_text:
-        return ""
-    s = code_text.strip()
-    if s.startswith("```"):
-        first_nl = s.find("\n")
-        if first_nl != -1:
-            s = s[first_nl + 1:]
-        if s.endswith("```"):
-            s = s[:-3]
-    return s.strip() + "\n"
 
 def safe_auto_fix(file_path: str, new_code_from_ai: str) -> tuple:
+    """
+    ⭐ [무조건 백업 -> 임시파일 생성 -> AST 문법 & 보안 검사 -> 통과 시에만 원본 덮어쓰기]
+    실패 시 원본을 100% 보존하며, 타임스탬프 백업(.bak)을 남겨 언제든 1초 롤백을 보장합니다.
+    """
     import ast as _ast
     import shutil as _shutil
 
-    if not file_path:
-        return False, "대상 파일 경로가 비어 있습니다."
-    cleaned_code = _strip_markdown_code_fence(new_code_from_ai)
-    if not cleaned_code or len(cleaned_code.strip()) < 20:
+    if not file_path or not os.path.exists(file_path):
+        return False, f"원본 파일이 존재하지 않습니다: {file_path}"
+    if not new_code_from_ai or len(new_code_from_ai.strip()) < 20:
         return False, "수정할 코드가 비어 있거나 너무 짧습니다."
-
-    if not os.path.exists(file_path):
-        try:
-            with open(file_path, "w", encoding="utf-8") as f_init:
-                f_init.write("# Initialized by AI AS Center\n")
-        except Exception as e_init:
-            return False, f"원본 파일 생성 실패: {e_init}"
 
     backup_dir = CFG.get("paths", {}).get("backups", "data/backups")
     try:
@@ -8667,17 +9006,20 @@ def safe_auto_fix(file_path: str, new_code_from_ai: str) -> tuple:
     temp_path = f"{file_path}.tmp"
 
     try:
+        # 1) 임시 파일(.tmp)에 새 코드 기록
         with open(temp_path, "w", encoding="utf-8") as f_tmp:
-            f_tmp.write(cleaned_code)
+            f_tmp.write(new_code_from_ai)
 
+        # 2) [테스트 게이트 1] 파이썬 AST 문법(Syntax) 무결성 검사
         try:
             with open(temp_path, "r", encoding="utf-8") as f_chk:
                 _tree = _ast.parse(f_chk.read())
         except SyntaxError as syn_e:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
-            return False, f"🚨 [자동 차단] 코드 문법(Syntax) 오류 발견으로 덮어쓰기 취소 (원본 100% 보존): {syn_e}"
+            return False, f"🚨 [자동 차단] AI 코드 문법(Syntax) 오류 발견으로 덮어쓰기 취소 (원본 100% 보존): {syn_e}"
 
+        # 3) [테스트 게이트 2] 위험 시스템 파괴 명령어 검사
         dangerous_calls = {"rmtree", "unlink", "kill", "format_map"}
         for node in _ast.walk(_tree):
             if isinstance(node, _ast.Attribute) and node.attr in dangerous_calls:
@@ -8685,12 +9027,14 @@ def safe_auto_fix(file_path: str, new_code_from_ai: str) -> tuple:
                     os.remove(temp_path)
                 return False, f"🚨 [보안 차단] 위험 함수 호출({node.attr}) 감지 — 덮어쓰기 취소"
 
+        # 4) 테스트 통과 확인 후 원본 파일 이중 백업 (.bak 및 타임스탬프 백업)
         _shutil.copy2(file_path, backup_latest)
         try:
             _shutil.copy2(file_path, backup_ts)
         except Exception:
             pass
 
+        # 5) 모든 테스트 통과 -> 원자적 교체 (Atomic Move)
         _shutil.move(temp_path, file_path)
         db_log_evolution_event(
             "AI_AUTO_FIX_APPLIED",
@@ -8698,14 +9042,20 @@ def safe_auto_fix(file_path: str, new_code_from_ai: str) -> tuple:
             to_ver=f"{base_name} (백업: {os.path.basename(backup_ts)})",
             reason="AI AS 자동수술 AST 문법·보안 검증 통과 후 안전 덮어쓰기 완료",
         )
-        return True, f"✅ 테스트 통과! `{base_name}` 안전 덮어쓰기 완료 ({len(cleaned_code):,} bytes 반영 · 원본 백업: `{base_name}.bak`)"
-    except Exception as exc:
+        return True, f"✅ 테스트 통과! `{base_name}` 안전 덮어쓰기 완료 (원본 백업: `{base_name}.bak` / `{os.path.basename(backup_ts)}`)"
+    except Exception as ex:
+        if os.path.exists(backup_latest):
+            try:
+                _shutil.copy2(backup_latest, file_path)
+            except Exception:
+                pass
         if os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
             except Exception:
                 pass
-        return False, f"🚨 안전 덮어쓰기 중 예외 발생 (원본 보존됨): {exc}"
+        return False, f"🚨 배포 중 예외 발생 — 이전 백업본(.bak)으로 즉시 자동 롤백 완료: {ex}"
+
 
 def restore_file_from_backup(file_path: str) -> tuple:
     """백업 파일(.bak)로부터 원본 파일을 1초 만에 즉시 복구합니다."""
@@ -8725,6 +9075,7 @@ def restore_file_from_backup(file_path: str) -> tuple:
         return True, f"🔄 `{os.path.basename(file_path)}` 파일이 직전 백업본(`.bak`)으로 완벽히 복구되었습니다!"
     except Exception as ex:
         return False, f"복구 실패: {ex}"
+
 
 def push_fixed_code_to_github(
     file_path_in_repo: str,
@@ -8759,7 +9110,7 @@ def push_fixed_code_to_github(
         "X-GitHub-Api-Version": "2022-11-28",
     }
     try:
-
+        # 1) 기존 파일 SHA 조회 (업데이트 시 필수, 새 팀 파일 생성 시에는 None)
         r_get = _req.get(api_url, headers=headers, params={"ref": br}, timeout=12)
         sha_val = None
         if r_get.status_code == 200:
@@ -8786,6 +9137,7 @@ def push_fixed_code_to_github(
         return False, f"GitHub API 오류 (HTTP {r_put.status_code}): {r_put.text[:240]}"
     except Exception as ex:
         return False, f"GitHub 전송 중 네트워크 예외 발생: {ex}"
+
 
 def call_ai_auto_fixer_llm(
     target_file: str,
@@ -8855,7 +9207,7 @@ def call_ai_auto_fixer_llm(
 
     try:
         if provider == "gemini":
-
+            # ⭐ [404 원천 방지] 구형 모델명(gemini-2.5-pro 등) 호출 시 최신 gemini-3.1-pro-preview로 자동 매핑 및 404 발생 시 gemini-2.5-flash로 즉시 폴백
             if model_id in ("gemini-2.5-pro", "gemini-1.5-pro", "gemini-pro"):
                 model_id = "gemini-3.1-pro-preview"
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={eff_key}"
@@ -8901,6 +9253,13 @@ def call_ai_auto_fixer_llm(
     except Exception as ex:
         return False, f"AI 모델({model_id}) 호출 중 예외 발생: {ex}"
 
+
+# ==============================================================================
+# [Agent 21] 🧬 매니저 자가 진화 연구소 (Self-Evolution Engine — agent_evolution.py)
+# - 50건 배치 통계 검증(95% 신뢰구간 + p-value 유의성 검정) & 15건 조기 중단(Early Stop) 안전장치
+# - 주간 4단계 신호등(GREEN/YELLOW/ORANGE/RED) & 5대 반복 실패 패턴 자동 추출
+# - 월가 추가 대가 철학(와이코프·린다 라쉬케·래리 윌리엄스·알 브룩스) AST 보안 샌드박스 백테스트 & 승격/롤백
+# ==============================================================================
 MIN_SAMPLE_SIZE = 50
 EARLY_STOP_WIN_RATE = 25.0
 EARLY_STOP_PF = 0.40
@@ -9006,6 +9365,7 @@ WORLD_MASTERS = {
     },
 }
 
+
 def validate_generated_code(code: str) -> tuple:
     """
     [Layer 4 샌드박스 정적 보안 검사]
@@ -9037,6 +9397,7 @@ def validate_generated_code(code: str) -> tuple:
 
     return True, "AST 보안 및 Look-ahead Bias 무결성 통과"
 
+
 def evaluate_extra_masters_on_df(df: pd.DataFrame, active_masters: list) -> tuple:
     """현재 챔피언 매니저에 추가 탑재된 세계 대가 기법(Wyckoff 등)을 실행하여 가산점과 통과 내역을 반환."""
     if not active_masters or df is None or df.empty or len(df) < 25:
@@ -9062,6 +9423,7 @@ def evaluate_extra_masters_on_df(df: pd.DataFrame, active_masters: list) -> tupl
             pass
     bonus = min(10.0, len(passed_names) * 4.0)
     return bonus, passed_names
+
 
 def sandbox_backtest(code: str, philosophy_key: str, tickers: list = None, period: str = "1y") -> dict:
     """
@@ -9093,7 +9455,7 @@ def sandbox_backtest(code: str, philosophy_key: str, tickers: list = None, perio
             df = get_history(tk, period=period)
             if df is None or df.empty or len(df) < 40:
                 continue
-
+            # 최근 80거래일 중 5일 후 청산 가능한 시점 순회
             start_i = max(22, len(df) - 85)
             for idx_i in range(start_i, len(df) - 6, 2):
                 res = test_fn(df, idx_i)
@@ -9125,6 +9487,7 @@ def sandbox_backtest(code: str, philosophy_key: str, tickers: list = None, perio
     except Exception as e:
         return {"status": "REJECTED", "reason": f"샌드박스 실행 제한: {e}", "win_rate": 0.0, "profit_factor": 0.0, "total_signals": 0}
 
+
 def _days_since_last_promotion() -> int:
     """최근 챔피언 승격(PROMOTE) 이후 경과 일수를 반환합니다 (승격 후 30일 쿨다운 검증용)."""
     try:
@@ -9149,6 +9512,7 @@ def _days_since_last_promotion() -> int:
     except Exception:
         pass
     return 999
+
 
 def check_early_stop(version: str = None) -> dict:
     """
@@ -9204,14 +9568,17 @@ def check_early_stop(version: str = None) -> dict:
             "manual_approval_required": False,
         }
 
+    # ⭐ 4대 안전장치 검정
     auto_rb_allowed = True
     safety_notes = []
 
+    # 안전장치 1: 최근 15건 중 BEAR/CRISIS 레짐 비중이 50% 이상이면 시장 조정 탓이므로 자동 롤백 금지
     bear_crisis_cnt = sum(1 for t in recent_15 if str(t.get("regime", "")).upper() in ("BEAR", "CRISIS"))
     if bear_crisis_cnt >= 8:
         auto_rb_allowed = False
         safety_notes.append("안전장치#1: BEAR/CRISIS 시장조정 구간 자동롤백 차단")
 
+    # 안전장치 2: 최근 7일 내 이미 롤백 이력이 있으면 연쇄 롤백 방지
     try:
         recent_evs = db_get_recent_evolution_events(limit=20)
         now_dt = datetime.now()
@@ -9225,10 +9592,12 @@ def check_early_stop(version: str = None) -> dict:
     except Exception:
         pass
 
+    # 안전장치 3: 초기 v1.0.0 (1세대 이하)은 롤백 대상이 없으므로 롤백 금지
     if int(champ.get("generation", 1)) <= 1:
         auto_rb_allowed = False
         safety_notes.append("안전장치#3: 1세대 초기 챔피언 롤백 불가")
 
+    # 안전장치 4: 금융 소프트웨어 원칙 — 기본은 '자동 경고 + 사용자 1클릭 승인' (단, 30건 이상 누적손실 -25% 이하 극단적 위기 시에만 자동 허용)
     emergency_auto = bool(auto_rb_allowed and n >= 30 and cum_ret <= -25.0)
     if not emergency_auto:
         safety_notes.append("안전장치#4: 자동경고 발령 (Tab 10에서 1클릭 롤백 승인 권장)")
@@ -9243,6 +9612,7 @@ def check_early_stop(version: str = None) -> dict:
         "manual_approval_required": not emergency_auto,
     }
 
+
 def _compute_one_sample_pvalue(win_binary: list) -> float:
     """scipy 유무와 무관하게 작동하는 1-sample t-test / 정규근사 양측 p-value 계산."""
     n = len(win_binary)
@@ -9254,9 +9624,10 @@ def _compute_one_sample_pvalue(win_binary: list) -> float:
     if std_v <= 1e-9:
         return 0.001 if abs(mean_v - 0.5) > 0.1 else 1.0
     t_stat = abs(mean_v - 0.5) / (std_v / math.sqrt(n))
-
+    # 정규/스튜던트 보수적 양측 p-value 근사 (n >= 30에서 t-분포와 거의 일치)
     p_val = math.erfc(t_stat / math.sqrt(2.0))
     return float(np.clip(p_val, 0.0001, 1.0))
+
 
 def evaluate_50_samples(version: str = None) -> dict:
     """
@@ -9269,7 +9640,10 @@ def evaluate_50_samples(version: str = None) -> dict:
     n = len(trades)
 
     if early["triggered"]:
-
+        # ⭐ [21.0 완전자동화 패치 #2 + 4대 안전장치]
+        # - 조기중단 감지 시 3연속 오답 팀 재진단 자동 트리거
+        # - 무분별한 15건 자동 롤백 대신 4대 안전장치를 통과한 비상 상황(30건+ 극단 손실)에서만 자동 롤백하고,
+        #   기본적으로 '자동 경고 + 사용자 1클릭 승인' 모드로 안전하게 보호합니다.
         rb_note = ""
         try:
             if "detect_consecutive_errors" in globals():
@@ -9400,6 +9774,7 @@ def evaluate_50_samples(version: str = None) -> dict:
         "reason": reason,
     }
 
+
 def evaluate_weekly_health(week_stats: dict) -> dict:
     """주간 성적표 4단계 신호등 판정 (승률 + 손익비 PF + 기대값 Expectancy 3중 결합)."""
     tot = int(week_stats.get("total", 0))
@@ -9442,12 +9817,14 @@ def evaluate_weekly_health(week_stats: dict) -> dict:
         "require_approval": False,
     }
 
+
 def diagnose_weekly_failure(failed_trades: list) -> list:
     """실패한 모의매매 내역에서 5대 반복 실패 패턴을 자동 추출합니다."""
     patterns = []
     if not failed_trades:
         return patterns
 
+    # 패턴 1: BEAR 레짐 과매매
     bear_buys = [t for t in failed_trades if t.get("regime") == "BEAR"]
     if len(bear_buys) >= 3:
         patterns.append({
@@ -9458,6 +9835,7 @@ def diagnose_weekly_failure(failed_trades: list) -> list:
             "recommended_master": "Al_Brooks",
         })
 
+    # 패턴 2: 저점수(18~26점) 진입 함정
     low_score_losses = [t for t in failed_trades if 18.0 <= safe_float(t.get("score"), 25.0) < 27.0]
     if len(low_score_losses) >= 3:
         patterns.append({
@@ -9468,6 +9846,7 @@ def diagnose_weekly_failure(failed_trades: list) -> list:
             "recommended_master": "Wyckoff",
         })
 
+    # 패턴 3: Chart만 높고 News/Macro가 낮은데 진입했다가 손실
     chart_only = []
     for t in failed_trades:
         try:
@@ -9485,6 +9864,7 @@ def diagnose_weekly_failure(failed_trades: list) -> list:
             "recommended_master": "Linda_Raschke",
         })
 
+    # 패턴 4: 1~2일 내 조기 손절 집중
     quick_stops = [t for t in failed_trades if int(t.get("hold_days") or 99) <= 2]
     if len(quick_stops) >= 3:
         patterns.append({
@@ -9495,6 +9875,7 @@ def diagnose_weekly_failure(failed_trades: list) -> list:
             "recommended_master": "Linda_Raschke",
         })
 
+    # 패턴 5: 특정 종목 반복 손실
     tk_counts = {}
     for t in failed_trades:
         tk = t.get("ticker", "")
@@ -9511,6 +9892,7 @@ def diagnose_weekly_failure(failed_trades: list) -> list:
             })
 
     return patterns
+
 
 def generate_weekly_review() -> dict:
     """최근 모의매매 데이터를 집계하여 주간 성적표 및 실패 패턴 진단서를 생성·저장합니다."""
@@ -9585,6 +9967,7 @@ def generate_weekly_review() -> dict:
         LOG.error("generate_weekly_review error: %s", e)
     return review
 
+
 def db_get_latest_weekly_review() -> dict:
     try:
         with _db_conn() as conn:
@@ -9608,6 +9991,7 @@ def db_get_latest_weekly_review() -> dict:
     except Exception:
         pass
     return {}
+
 
 def detect_philosophy_gap() -> list:
     """
@@ -9644,6 +10028,7 @@ def detect_philosophy_gap() -> list:
             "code": spec["code"],
         })
 
+    # 만약 아직 패턴이 없더라도 사용자가 대가 철학 확장 후보를 볼 수 있도록 미장착 대가 제공
     for m_key, spec in WORLD_MASTERS.items():
         if m_key not in active_extra and m_key not in seen_masters:
             is_safe, safe_msg = validate_generated_code(spec["code"])
@@ -9659,6 +10044,7 @@ def detect_philosophy_gap() -> list:
                 "code": spec["code"],
             })
     return gaps
+
 
 def approve_and_add_world_master(master_key: str) -> tuple:
     """
@@ -9719,6 +10105,7 @@ def approve_and_add_world_master(master_key: str) -> tuple:
     except Exception as e:
         return False, f"DB 저장 오류: {e}"
 
+
 def auto_evolve_challenger() -> dict:
     """
     현재 챔피언의 실패 패턴과 팀별 정답률을 기반으로 ±20% 안전 범위 내에서
@@ -9745,6 +10132,7 @@ def auto_evolve_challenger() -> dict:
                         weights[reg][w_k] = round(weights[reg][w_k] * 0.84, 4)
                 adjusted_teams.append(f"{t_name}(부진 -16%)")
 
+    # 미장착 대가 중 1명 자동 탑재
     for m_k in ("Wyckoff", "Linda_Raschke", "Larry_Williams", "Al_Brooks"):
         if m_k not in extra:
             extra.append(m_k)
@@ -9783,6 +10171,7 @@ def auto_evolve_challenger() -> dict:
         LOG.error("auto_evolve_challenger error: %s", e)
     return {"version": chal_ver, "bt_win_rate": bt_wr, "bt_pf": bt_pf, "adjusted": adjusted_teams}
 
+
 def promote_challenger_to_champion(challenger_version: str) -> bool:
     """검증 통과한 챌린저를 새 챔피언으로 승격합니다."""
     champ = db_get_champion_version()
@@ -9799,6 +10188,7 @@ def promote_challenger_to_champion(challenger_version: str) -> bool:
     except Exception as e:
         LOG.error("promote_challenger_to_champion error: %s", e)
         return False
+
 
 def rollback_to_previous_champion() -> tuple:
     """현재 챔피언 성과 악화 또는 사용자 요청 시 직전 챔피언 버전으로 즉시 롤백합니다."""
@@ -9823,8 +10213,9 @@ def rollback_to_previous_champion() -> tuple:
     except Exception as e:
         return False, f"롤백 오류: {e}"
 
-def db_set_auto_evolution_mode(enabled: bool) -> bool:
 
+def db_set_auto_evolution_mode(enabled: bool) -> bool:
+    # 챔피언의 자율 진화 스위치(auto_evolution_enabled)를 ON/OFF 업데이트합니다.
     try:
         champ = db_get_champion_version()
         veto_cfg = copy.deepcopy(champ.get("veto_thresholds") or DEFAULT_VETO_THRESHOLDS)
@@ -9840,11 +10231,12 @@ def db_set_auto_evolution_mode(enabled: bool) -> bool:
         LOG.error("db_set_auto_evolution_mode error: %s", e)
         return False
 
-def db_save_meta_learning_weights(force: bool = False) -> tuple:
 
+def db_save_meta_learning_weights(force: bool = False) -> tuple:
+    # 16개 팀의 최근 45일 정답률 기반 메타러닝 동적 보정을 Decay(0.9) + 상하한 캡(기본가중치의 0.5x~2.0x) + 일 1회 제한으로 안전하게 영구 저장합니다.
     try:
         champ = db_get_champion_version()
-
+        # ⭐ 안전장치 1: 일 1회(24시간) 배치 저장 제한 (반복 클릭/호출로 인한 Weight Drift 방지)
         if not force:
             recent_evs = db_get_recent_evolution_events(limit=25)
             now_dt = datetime.now()
@@ -9882,14 +10274,15 @@ def db_save_meta_learning_weights(force: bool = False) -> tuple:
                             prev_w = float(prev_weights[reg][wk])
                             base_w = float(DEFAULT_BASE_WEIGHTS.get(reg, {}).get(wk, prev_w) or prev_w)
                             target_w = prev_w * meta_mult
-
+                            # ⭐ 안전장치 2: Decay factor 0.9 블렌딩 (기존 90% + 신규 10%)
                             blended_w = (prev_w * 0.90) + (target_w * 0.10)
-
+                            # ⭐ 안전장치 3: 기본 가중치 대비 [0.5x, 2.0x] 및 직전 대비 ±20% 상하한 캡
                             min_cap = max(0.50 * base_w, 0.80 * prev_w)
                             max_cap = min(2.00 * base_w, 1.20 * prev_w)
                             weights[reg][wk] = round(float(np.clip(blended_w, min_cap, max_cap)), 4)
                     changed.append(f"{ag_nm}({meta_mult:.2f}x)")
 
+        # ⭐ 안전장치 4: 레짐별 가중치 합계 1.0 정규화
         for reg in weights:
             reg_sum = sum(float(v) for v in weights[reg].values() if float(v) > 0)
             if reg_sum > 0:
@@ -9915,7 +10308,11 @@ def db_save_meta_learning_weights(force: bool = False) -> tuple:
     except Exception as e:
         return False, f"메타러닝 가중치 저장 실패: {e}"
 
-def _render_eod_paper_trading_inner(indices, usd_krw):
+
+# ==============================================================================
+# [UI Tab 8] 🤖 모의매매 리포트 (render_tab_paper_trading)
+# ==============================================================================
+def render_tab_paper_trading(indices, usd_krw):
     evaluate_open_paper_positions(max_hold_days=10)
     render_html("""
     <div style="margin-bottom:12px;">
@@ -9989,6 +10386,7 @@ def _render_eod_paper_trading_inner(indices, usd_krw):
         </div>
     </div>""")
 
+    # Section 2: 최근 Top 픽 & 보유 중인 모의 포지션
     st.markdown("##### 📋 최근 선정된 Top 모의매매 픽")
     recent_picks = db_get_today_paper_picks(limit=3)
     if not recent_picks:
@@ -10032,6 +10430,7 @@ def _render_eod_paper_trading_inner(indices, usd_krw):
                 </div>
             </div>""")
 
+    # Section 4: 누적 수익률 차트
     eq_df = db_get_paper_equity_curve()
     if not eq_df.empty:
         st.markdown("##### 📈 모의매매팀 누적 수익률 곡선 (EOD 청산 기준)")
@@ -10055,6 +10454,7 @@ def _render_eod_paper_trading_inner(indices, usd_krw):
         )
         st.plotly_chart(fig_p, use_container_width=True)
 
+    # Section 5: 최근 청산 내역
     st.markdown("##### 📊 최근 청산 내역 (최근 15건)")
     closed_list = db_get_recent_closed_paper_trades(limit=15)
     if closed_list:
@@ -10077,11 +10477,10 @@ def _render_eod_paper_trading_inner(indices, usd_krw):
                 </div>
             </div>""")
 
-def render_tab_paper_trading(indices, usd_krw):
-    render_tab_swing_robot(indices, usd_krw)
-    st.markdown("<hr style='margin:22px 0; border-color:#1e293b;'>", unsafe_allow_html=True)
-    _render_eod_paper_trading_inner(indices, usd_krw)
 
+# ==============================================================================
+# [UI Tab 9] 🔍 팀 점검 센터 (render_tab_audit)
+# ==============================================================================
 def render_tab_audit(usd_krw):
     detect_consecutive_errors(min_consecutive=3)
     render_html("""
@@ -10168,6 +10567,7 @@ def render_tab_audit(usd_krw):
                 ic = "✅ 승인됨" if h["status"] == "APPROVED" else "❌ 거절됨"
                 st.markdown(f"- **{ic}** | **{h['agent_name']} 팀** ({h['detected_date']}) → {h['proposed_fix']}")
 
+    # ⭐ [21.0 NEW] AI AS 자동수술 & 먹통방지 자가치유 센터 (Gemini Flash/4 Argon · DeepSeek V3/R1 + .bak 안전백업 + GitHub 자동배포)
     st.markdown("---")
     render_html("""
     <div style="background:linear-gradient(135deg,#0f172a,#1e1b4b 60%,#0f172a); border:1.5px solid #38bdf8; border-radius:14px; padding:16px 18px; margin-top:10px; margin-bottom:12px;">
@@ -10253,8 +10653,6 @@ def render_tab_audit(usd_krw):
                             st.session_state["ai_pro_calls_today"] += 1
                         st.session_state["as_generated_code"] = res_ai
                         st.session_state["as_generated_target"] = target_f
-                        st.session_state["as_code_editor_area"] = res_ai
-                        st.session_state["as_last_target_f"] = target_f
                         st.success(f"✅ AI 수정 코드 생성 완료! 아래 코드 편집기에서 확인 후 [2단계: 백업 후 안전 덮어쓰기] 또는 [3단계: GitHub 자동 배포]를 누르세요.")
                     else:
                         st.warning(res_ai)
@@ -10262,63 +10660,37 @@ def render_tab_audit(usd_krw):
             if st.button(f"🔄 `{target_f}.bak` 직전 백업본으로 즉시 복구(롤백)", use_container_width=True, key="btn_as_restore_bak"):
                 ok_bk, msg_bk = restore_file_from_backup(target_f_path)
                 if ok_bk:
-                    try:
-                        with open(target_f_path, "r", encoding="utf-8") as f_rbk:
-                            st.session_state["as_code_editor_area"] = f_rbk.read()
-                    except Exception:
-                        pass
-                    st.cache_data.clear()
                     st.success(msg_bk)
-                    st.rerun()
                 else:
                     st.info(msg_bk)
 
-    with st.expander("🔬 2단계 & 3단계: 코드 검증 · 로컬/Render 안전 덮어쓰기(.bak 백업) · GitHub 자동 커밋/배포", expanded=True):
+    with st.expander("🔬 2단계 & 3단계: 코드 검증 · 로컬/Render 안전 덮어쓰기(.bak 백업) · GitHub 자동 커밋/배포", expanded=bool(st.session_state.get("as_generated_code"))):
         loaded_file_src = ""
-        if os.path.exists(target_f_path):
+        if os.path.exists(target_f):
             try:
-                with open(target_f_path, "r", encoding="utf-8") as f_cur:
+                with open(target_f, "r", encoding="utf-8") as f_cur:
                     loaded_file_src = f_cur.read()
             except Exception:
                 loaded_file_src = ""
-        if st.session_state.get("as_last_target_f") != target_f:
-            st.session_state["as_last_target_f"] = target_f
-            if st.session_state.get("as_generated_target") == target_f and st.session_state.get("as_generated_code"):
-                st.session_state["as_code_editor_area"] = st.session_state["as_generated_code"]
-            else:
-                st.session_state["as_code_editor_area"] = loaded_file_src
-        elif "as_code_editor_area" not in st.session_state:
-            st.session_state["as_code_editor_area"] = st.session_state.get("as_generated_code") or loaded_file_src
-
-        c_ed_btn1, c_ed_btn2 = st.columns(2)
-        with c_ed_btn1:
-            if st.button("🧹 입력창 비우기 (외부 전체 코드 직접 붙여넣기 모드)", use_container_width=True, key="btn_as_clear_editor"):
-                st.session_state["as_code_editor_area"] = ""
-                st.session_state["as_generated_code"] = ""
-                st.rerun()
-        with c_ed_btn2:
-            if st.button(f"📂 디스크에서 `{target_f}` 현재 원본 다시 불러오기", use_container_width=True, key="btn_as_reload_disk"):
-                st.session_state["as_code_editor_area"] = loaded_file_src
-                st.session_state["as_generated_code"] = ""
-                st.rerun()
-
+        init_editor_code = st.session_state.get("as_generated_code") or loaded_file_src
         edited_code = st.text_area(
-            f"📄 `{target_f}` 적용 대기 코드 (AI 생성 코드 또는 전체 코드 붙여넣기 — 적용 시 AST 문법·보안 자동 검사 후 즉시 반영)",
-            height=300,
+            f"📄 `{target_f}` 적용 대기 코드 (AI가 생성한 코드 또는 직접 붙여넣기 가능 — 적용 전 AST 문법·보안 자동 검사)",
+            value=init_editor_code,
+            height=260,
             key="as_code_editor_area",
         )
         c_dep1, c_dep2 = st.columns(2)
         with c_dep1:
             if st.button(f"🛡️ 2단계: `{target_f}` 무조건 백업(.bak) 후 테스트 & 안전 덮어쓰기", type="primary", use_container_width=True, key="btn_as_safe_apply"):
-                code_to_apply = st.session_state.get("as_code_editor_area", edited_code)
-                ok_fx, msg_fx = safe_auto_fix(target_f_path, code_to_apply)
+                if not os.path.exists(target_f_path):
+                    try:
+                        with open(target_f_path, "w", encoding="utf-8") as f_init:
+                            f_init.write("# New Agent File\n")
+                    except Exception:
+                        pass
+                ok_fx, msg_fx = safe_auto_fix(target_f_path, edited_code)
                 if ok_fx:
-                    cleaned_applied = _strip_markdown_code_fence(code_to_apply)
-                    st.session_state["as_code_editor_area"] = cleaned_applied
-                    st.session_state["as_generated_code"] = ""
-                    st.cache_data.clear()
-                    st.success(msg_fx + " — 앱 캐시를 초기화하고 즉시 리로드합니다.")
-                    st.rerun()
+                    st.success(msg_fx)
                 else:
                     st.error(msg_fx)
         with c_dep2:
@@ -10326,13 +10698,13 @@ def render_tab_audit(usd_krw):
             gh_tok = st.text_input("GitHub Token (`ghp_...` · 미입력 시 환경변수 GITHUB_TOKEN 사용)", type="password", key="as_gh_tok")
             gh_msg = st.text_input("커밋 메시지", value=f"AI AS Auto-Fix: update {target_f}", key="as_gh_msg")
             if st.button(f"🚀 3단계: GitHub에 `{target_f}` 자동 커밋 & Render 자동 재배포", use_container_width=True, key="btn_as_gh_push"):
+                # 먼저 AST 문법 검사 통과 여부 확인
                 try:
                     import ast as _ast
-                    code_for_gh = _strip_markdown_code_fence(st.session_state.get("as_code_editor_area", edited_code))
-                    _ast.parse(code_for_gh)
+                    _ast.parse(edited_code)
                     ok_gh, msg_gh = push_fixed_code_to_github(
                         file_path_in_repo=target_f,
-                        new_code=code_for_gh,
+                        new_code=edited_code,
                         commit_message=gh_msg,
                         github_token=gh_tok,
                         repo_name=gh_repo,
@@ -10344,6 +10716,10 @@ def render_tab_audit(usd_krw):
                 except SyntaxError as e_syn:
                     st.error(f"🚨 문법 오류가 있는 코드는 GitHub에 푸시할 수 없습니다 (자동 차단): {e_syn}")
 
+
+# ==============================================================================
+# [UI Tab 10] 🧬 진화 연구소 (render_tab_evolution)
+# ==============================================================================
 def render_tab_evolution(usd_krw):
     render_html("""
     <div style="margin-bottom:12px;">
@@ -10381,6 +10757,7 @@ def render_tab_evolution(usd_krw):
     val_50 = evaluate_50_samples(champ["version"])
     review = generate_weekly_review()
 
+    # ⭐ [21.0 안전장치 #2] 조기중단(AUTO_ROLLBACK) 경보 발생 시 상단 1클릭 즉시 롤백 승인 배너 노출
     if val_50.get("verdict") == "AUTO_ROLLBACK":
         st.error(f"🚨 **[조기 중단 경보 발령]** {val_50.get('reason', '')}")
         if int(champ.get("generation", 1)) > 1:
@@ -10392,6 +10769,9 @@ def render_tab_evolution(usd_krw):
                 else:
                     st.warning(rb_msg_1c)
 
+    # ⭐ [21.0 완전자동화 패치 #3 + 안전장치] 자율 진화 모드 ON & 50건 통계검증 PROMOTE 통과 시:
+    # - 안전장치 1: 5세대 이상(generation >= 5)에서는 무분별한 자식 세대 폭주 방지를 위해 자동 승격 중단 (수동 검토 필수)
+    # - 안전장치 2: 최근 승격 후 30일 미경과(_days_since_last_promotion() < 30) 시 관찰 유지
     if auto_evo_on and val_50.get("verdict") == "PROMOTE" and val_50.get("ready"):
         if int(champ.get("generation", 1)) >= 5:
             st.warning("⚠️ [안전장치 발동] 현재 5세대 이상 도달 — 무분별한 세대 폭주 방지를 위해 자동 승격을 멈추고 수동 검토로 전환합니다.")
@@ -10409,6 +10789,7 @@ def render_tab_evolution(usd_krw):
                     new_champ_ver = str(champ["version"])
                     st.success(f"🧬 [자율 진화 자동 승격] 50건 통계 검증(PROMOTE) 통과로 새 챔피언 `{new_champ_ver}` 자동 등극 완료!")
 
+    # 1) 챔피언 상태 & 50건 배치 검증 게이트
     v_col = {
         "PROMOTE": "#10b981",
         "KEEP_OBSERVING": "#38bdf8",
@@ -10460,6 +10841,7 @@ def render_tab_evolution(usd_krw):
 
     st.progress(min(1.0, val_50["progress"] / 100.0), text=f"50건 배치 검증 표본 진행률: {val_50['total']}/{MIN_SAMPLE_SIZE}건 ({val_50['progress']:.0f}%)")
 
+    # 2) 주간 4단계 신호등 성적표 & 반복 실패 패턴 승인
     lvl_col = {
         "GREEN": "#10b981", "YELLOW": "#fbbf24",
         "ORANGE": "#f97316", "RED": "#f43f5e", "GRAY": "#94a3b8",
@@ -10488,6 +10870,7 @@ def render_tab_evolution(usd_krw):
                     st.success(f"패턴 교정안이 챔피언({new_v})에 반영되었습니다!")
                     st.rerun()
 
+    # 3) 세계 대가 철학 확장 (Layer 2~4: 철학 갭 감지 + AST 보안 샌드박스 + 장착 승인)
     st.markdown("##### 📚 세계 대가 철학 업그레이드 센터 (반복 실수 상황 맞춤 철학 이식)")
     gaps = detect_philosophy_gap()
     for g in gaps:
@@ -10511,6 +10894,7 @@ def render_tab_evolution(usd_krw):
                     else:
                         st.warning(msg)
 
+    # 4) 챔피언 vs 챌린저 A/B 테스트 & 긴급 롤백 제어판
     st.markdown("##### ⚔️ 챔피언 vs 챌린저 진화 제어판 & 긴급 롤백")
     c_e1, c_e2, c_e3 = st.columns(3)
     with c_e1:
@@ -10537,6 +10921,7 @@ def render_tab_evolution(usd_krw):
             else:
                 st.info(msg_rb)
 
+    # 5) 진화 타임라인 로그
     st.markdown("##### 📜 매니저 자가 진화 타임라인 (전체 감사 로그)")
     ev_logs = db_get_recent_evolution_events(limit=10)
     if not ev_logs:
@@ -10545,6 +10930,19 @@ def render_tab_evolution(usd_krw):
         for ev in ev_logs:
             st.markdown(f"- **`{ev['created_at']}`** | **[{ev['type']}]** `{ev['from']}` → `{ev['to']}` : {ev['reason']}")
 
+
+# ==============================================================================
+# 21) MAIN ENTRY (10 Tabs Complete Edition)
+# ==============================================================================
+
+# ==============================================================================
+# ⭐ [22.0 NEW] 스윙 전용 AI 자동매매 로봇 통합 모듈 (Standalone app.py 내장본)
+# ==============================================================================
+
+
+# ==============================================================================
+# ⭐ [22.0 NEW] 스윙 전용 AI 자동매매 로봇 SQLite DB 스키마 초기화
+# ==============================================================================
 def init_robot_db():
     """
     스윙 자동매매 로봇 핵심 5대 테이블 초기화:
@@ -10660,6 +11058,7 @@ def init_robot_db():
     except Exception as e:
         LOG.error("init_robot_db error: %s", e)
 
+
 def db_log_robot_event(ticker: str, event_type: str, stage: str, detail: str, payload: dict = None):
     """스윙 자동매매 로봇의 모든 의사결정·필터·주문·청산 이벤트를 SQLite에 기록합니다."""
     try:
@@ -10681,6 +11080,7 @@ def db_log_robot_event(ticker: str, event_type: str, stage: str, detail: str, pa
             conn.commit()
     except Exception as e:
         LOG.debug("db_log_robot_event error: %s", e)
+
 
 def db_get_robot_logs(limit: int = 40) -> list:
     """최근 스윙 자동매매 로봇 실행 로그를 반환합니다."""
@@ -10709,12 +11109,19 @@ def db_get_robot_logs(limit: int = 40) -> list:
 
 init_robot_db()
 
+# ==============================================================================
+# [Agent 22-1] 🔌 증권사 API 간편 연동 UI 센터 (agent_broker_config.py — 22.0 FINAL)
+# - 소스코드를 직접 수정하거나 하드코딩할 필요 없이 Streamlit 웹 UI에서 App Key, Secret Key,
+#   계좌번호, 모의/실전 토글을 입력하면 로컬 SQLite(broker_config 테이블)에 보안 처리되어 저장·로드
+# - 실제 주문 집행 시 저장된 API 자격증명을 자동으로 불러오는 브릿지 함수 포함
+# ==============================================================================
 import base64
 from datetime import datetime
 import json
 import os
 import requests
 import streamlit as st
+
 
 BROKER_ENDPOINTS = {
     "KIS_OVERSEAS": {
@@ -10736,6 +11143,7 @@ BROKER_ENDPOINTS = {
 
 _OBFUSCATION_SALT = "GANGJIN_PRO_22_SALT::"
 
+
 def _encode_secret(plain_text: str) -> str:
     """로컬 SQLite 저장 시 평문 노출을 막기 위해 솔트 결합 Base64 난독화 인코딩을 수행합니다."""
     raw = str(plain_text or "").strip()
@@ -10743,6 +11151,7 @@ def _encode_secret(plain_text: str) -> str:
         return ""
     salted = f"{_OBFUSCATION_SALT}{raw}"
     return base64.b64encode(salted.encode("utf-8")).decode("ascii")
+
 
 def _decode_secret(encoded_text: str) -> str:
     """SQLite에서 로드한 난독화 문자열을 복호화하여 반환합니다."""
@@ -10757,6 +11166,7 @@ def _decode_secret(encoded_text: str) -> str:
     except Exception:
         return enc
 
+
 def _mask_credential(val: str) -> str:
     """UI 표시용 마스킹 문자열 생성 (예: PS12****89ab)."""
     s = str(val or "").strip()
@@ -10765,6 +11175,7 @@ def _mask_credential(val: str) -> str:
     if len(s) <= 6:
         return "*" * len(s)
     return f"{s[:4]}{'*' * (len(s) - 6)}{s[-2:]}"
+
 
 def db_save_broker_config(
     broker_name: str,
@@ -10833,6 +11244,7 @@ def db_save_broker_config(
         LOG.error("db_save_broker_config error: %s", e)
         return False, f"증권사 설정 저장 중 오류 발생: {e}"
 
+
 def db_load_broker_config() -> dict:
     """SQLite broker_config 테이블에서 증권사 API 설정을 복호화하여 로드합니다."""
     init_robot_db()
@@ -10887,6 +11299,7 @@ def db_load_broker_config() -> dict:
         LOG.debug("db_load_broker_config error: %s", e)
         return default_cfg
 
+
 def get_active_broker_credentials() -> dict:
     """
     ⭐ [브릿지 함수] 실제 주문 집행 엔진(agent_execution_robot.py)이 호출할 때
@@ -10907,6 +11320,7 @@ def get_active_broker_credentials() -> dict:
             cfg["account_no"] = env_a
     cfg["is_configured"] = bool(cfg.get("app_key") and cfg.get("app_secret") and cfg.get("account_no"))
     return cfg
+
 
 def send_broker_order(
     ticker: str,
@@ -10938,6 +11352,7 @@ def send_broker_order(
             "timestamp": now_s,
         }
 
+    # 1) API 키가 아직 등록되지 않은 경우 -> 로컬 모의 시뮬레이션 체결 처리
     if not creds.get("is_configured"):
         sim_oid = f"SIM-{datetime.now().strftime('%H%M%S')}-{tk}-{side_u}"
         msg = (
@@ -10965,6 +11380,7 @@ def send_broker_order(
             "timestamp": now_s,
         }
 
+    # 2) Alpaca Markets REST API 연동 지원
     b_name = creds.get("broker_name", "KIS_OVERSEAS")
     base_url = creds.get("base_url", "").rstrip("/")
     is_live = bool(creds.get("is_live", False))
@@ -11007,6 +11423,7 @@ def send_broker_order(
         except Exception as e:
             LOG.warning("Alpaca API order fallback to local ledger: %s", e)
 
+    # 3) KIS / Kiwoom 또는 오프라인 네트워크 환경에서도 주문 원장을 안전하게 기록 및 브릿지 응답 반환
     mode_tag = "LIVE" if is_live else "PAPER"
     oid = f"{b_name[:3]}-{mode_tag}-{datetime.now().strftime('%H%M%S')}-{tk}"
     msg = (
@@ -11033,6 +11450,7 @@ def send_broker_order(
         "message": msg,
         "timestamp": now_s,
     }
+
 
 def render_broker_config_ui():
     """Streamlit 웹 UI에서 증권사 API 자격증명 및 모의/실전 토글을 설정하는 센터 화면."""
@@ -11122,8 +11540,15 @@ def render_broker_config_ui():
             else:
                 st.error(msg)
 
+# ==============================================================================
+# [Agent 22-2] 🔄 사용자 실시간 변심 및 대기열(Queue) 제어 (agent_robot_queue.py — 22.0 FINAL)
+# - 사용자가 지정한 스윙 매매 대기 종목 큐(robot_order_queue)를 관리하고,
+#   장 시작 전이나 대기 중에 언제든 [패스(취소)]하거나 [다른 종목으로 실시간 교체]할 수 있는 UI 및 로직 제공
+# ==============================================================================
 from datetime import datetime
 import streamlit as st
+
+
 
 def db_enqueue_robot_symbol(
     ticker: str,
@@ -11168,6 +11593,7 @@ def db_enqueue_robot_symbol(
         LOG.error("db_enqueue_robot_symbol error: %s", e)
         return False, f"대기열 등록 오류: {e}"
 
+
 def db_pass_robot_symbol(
     queue_id: int,
     ticker: str = "",
@@ -11208,6 +11634,7 @@ def db_pass_robot_symbol(
     except Exception as e:
         LOG.error("db_pass_robot_symbol error: %s", e)
         return False, f"패스 처리 중 오류: {e}"
+
 
 def db_replace_robot_symbol(
     queue_id: int,
@@ -11255,6 +11682,7 @@ def db_replace_robot_symbol(
         LOG.error("db_replace_robot_symbol error: %s", e)
         return False, f"종목 교체 중 오류: {e}"
 
+
 def db_update_queue_status(
     queue_id: int,
     new_status: str,
@@ -11284,6 +11712,7 @@ def db_update_queue_status(
             conn.commit()
     except Exception as e:
         LOG.debug("db_update_queue_status error: %s", e)
+
 
 def db_get_robot_queue(include_all: bool = True) -> list:
     """현재 스윙 로봇 대기열 목록을 반환합니다."""
@@ -11326,6 +11755,7 @@ def db_get_robot_queue(include_all: bool = True) -> list:
         LOG.debug("db_get_robot_queue error: %s", e)
     return out
 
+
 def db_clear_finished_queue() -> int:
     """이미 패스(취소)되었거나 체결 완료된 과거 대기열 항목을 정리합니다."""
     init_robot_db()
@@ -11339,6 +11769,7 @@ def db_clear_finished_queue() -> int:
             return int(cur.rowcount or 0)
     except Exception:
         return 0
+
 
 def render_robot_queue_ui():
     """Streamlit UI: 사용자 실시간 변심 패스(취소) 및 대기열 종목 실시간 교체 컨트롤러."""
@@ -11444,8 +11875,17 @@ def render_robot_queue_ui():
                             st.info(msg)
                             st.rerun()
 
+# ==============================================================================
+# [Agent 22-3] 🤖 16개 전담팀 사전 감시망 및 매니저 비중 일임 (agent_robot_audit_bridge.py — 22.0 FINAL)
+# - 로봇이 단독 매매를 하는 것이 아니라, [Chief AI Manager의 16개 전담팀] 종합 점수(최소 20점 이상)와
+#   Veto(거부권) 0건을 필수로 통과해야만 주문 승인
+# - 매입 비중치는 로봇이 임의로 정하지 않고, Chief AI Manager의 '역변동성 & 쿼터 켈리(Quarter-Kelly)'
+#   사이징 결과를 100% 그대로 따름
+# ==============================================================================
 import re
 import pandas as pd
+
+
 
 def parse_chief_kelly_sizing(position_size_str: str, score: float = 0.0, atr_pct: float = 3.5) -> float:
     """
@@ -11468,6 +11908,7 @@ def parse_chief_kelly_sizing(position_size_str: str, score: float = 0.0, atr_pct
     vol_pct = max(1.0, safe_float(atr_pct, 3.5))
     inv_vol_pct = min(25.0, base_pct * (3.5 / vol_pct))
     return round(float(inv_vol_pct), 1)
+
 
 def evaluate_robot_pre_trade_audit(
     ticker: str,
@@ -11729,8 +12170,16 @@ def evaluate_robot_pre_trade_audit(
             "total_target_qty": 0,
         }
 
+# ==============================================================================
+# [Agent 22-6] 🌙 스윙 전용 오버나잇 호·악재 실시간 손익 수정기 (agent_swing_overnight.py — 22.0 FINAL)
+# - 스윙 포지션을 오버나잇할 때 프리마켓/장외 뉴스를 4중 수집 엔진으로 실시간 스캔
+# - 중대 악재 발생 시: 손절가(SL)를 타이트하게 조이거나 목표가를 낮춰 리스크 방어
+# - 대형 호재 발생 시: 손절선을 본전가(BE, 수수료 포함 무손실 라인) 이상으로 올려 무손실 구조를 만들고, 목표가(TP) 상향
+# ==============================================================================
 from datetime import datetime
 import streamlit as st
+
+
 
 def evaluate_overnight_sl_tp_adjuster(
     ticker: str,
@@ -11791,6 +12240,7 @@ def evaluate_overnight_sl_tp_adjuster(
     status_tag = "HOLD_NORMAL"
     action_summary = "오버나잇 특이 호·악재 없음 — 기존 SL/TP 유지"
 
+    # 1) 중대 악재 감지 -> 리스크 방어 모드 (SL 타이트하게 조임 + TP 하향)
     if severe_bad >= 1 or bad_hits >= 2:
         status_tag = "BAD_NEWS_TIGHTEN_SL"
         tight_sl_candidate = round(max(cur_sl, min(cur_px * 0.988, ent_px * 0.985)), 2)
@@ -11812,9 +12262,10 @@ def evaluate_overnight_sl_tp_adjuster(
             {"old_sl": cur_sl, "new_sl": new_sl, "old_tp1": tp1, "new_tp1": new_tp1, "headlines": headlines},
         )
 
+    # 2) 대형 호재(수주/계약 또는 실적 서프라이즈) 감지 -> 본전가(BE) 무손실 이동 + 목표가(TP) 상향
     elif contract_hits >= 1 or good_hits >= 2:
         status_tag = "GOOD_NEWS_BE_AND_RAISE_TP"
-        be_floor = round(ent_px * 1.003, 2)
+        be_floor = round(ent_px * 1.003, 2)  # 수수료+슬리피지 포함 완전 무손실 본전가(BE)
         if cur_px > be_floor:
             lock_profit_sl = round(max(be_floor, ent_px + (cur_px - ent_px) * 0.35), 2)
             new_sl = max(cur_sl, lock_profit_sl)
@@ -11853,6 +12304,7 @@ def evaluate_overnight_sl_tp_adjuster(
         "headlines": headlines,
         "summary": action_summary,
     }
+
 
 def apply_overnight_adjustments_to_positions(indices: list = None) -> list:
     """현재 로봇이 보유 중인 모든 오픈 스윙 포지션에 대해 오버나잇 4중 뉴스 스캔 및 SL/TP 자동 수정을 일괄 적용합니다."""
@@ -11898,6 +12350,7 @@ def apply_overnight_adjustments_to_positions(indices: list = None) -> list:
     except Exception as e:
         LOG.error("apply_overnight_adjustments_to_positions error: %s", e)
     return results
+
 
 def render_overnight_adjuster_ui(indices: list = None):
     """Streamlit UI: 스윙 오버나잇 4중 뉴스 스캔 및 실시간 SL/TP 손익 수정기 패널."""
@@ -11945,12 +12398,25 @@ def render_overnight_adjuster_ui(indices: list = None):
             for r in all_res:
                 st.write(f"- **{r['ticker']}**: {r['summary']}")
 
+# ==============================================================================
+# [Agent 22-4, 5 & Killer Ideas 7, 8, 9] 🛡️ 스윙 전용 AI 자동매매 로봇 통합 집행 엔진 (agent_execution_robot.py — 22.0 FINAL)
+# - [핵심 #4] 종목별 14일 동적 ATR 기반 폭등/폭락 패스 필터 (과도한 갭상승 추격매수 및 무근거 갭하락 자동 취소)
+# - [핵심 #5] 미국장 개장 직후 30분(09:30~10:00 ET) 노이즈 회피 & 5분봉 EMA20 지지 확인 & 나스닥(NQ=F) -1.5% 급락 시 진입 연기
+# - [킬러 #7] 분할 진입 스케줄러 (Scale-In: 1차 지지선 타점 40% 물량 + 2차 추가 눌림목/거래량 유입 60% 물량)
+# - [킬러 #8] 장마감 동시호가 청산 옵션 (Intraday Exit Protection: 15:50~16:00 ET 나스닥 -2.0% 급락 또는 지정학 악재 시 전량 강제 청산)
+# - [킬러 #9] 수익금 자동 인출 & 복리 재투자 토글 (Profit Harvesting: 확정 순수익의 30% 안전 파킹통장 격리, 70%만 다음 스윙 복리 시드 누적)
+# ==============================================================================
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 import yfinance as yf
 
+
+
+# ------------------------------------------------------------------------------
+# 4. 🛡️ 종목별 동적 ATR 기반 폭등/폭락 패스 필터 (Dynamic 14-day ATR Gap/Spike Pass Filter)
+# ------------------------------------------------------------------------------
 def evaluate_dynamic_atr_gap_filter(
     ticker: str,
     hist: pd.DataFrame = None,
@@ -12065,6 +12531,10 @@ def evaluate_dynamic_atr_gap_filter(
         "reason": f"✅ [동적 ATR 정상 범위] 변동률 {gap_change_pct:+.2f}% (허용 구간: {lower_limit_pct:+.2f}% ~ +{upper_limit_pct:.2f}%)",
     }
 
+
+# ------------------------------------------------------------------------------
+# 5. ⏱️ 미국장 장초반 30분(09:30~10:00 ET) 노이즈 회피 & 5분봉 EMA20 지지 & 나스닥(NQ=F) 흐름 제어
+# ------------------------------------------------------------------------------
 def get_nasdaq_futures_change_pct(indices: list = None) -> float:
     """나스닥 선물(NQ=F) 또는 나스닥 종합지수 등락률(%)을 반환합니다."""
     idx_list = indices if indices is not None else get_market_indices()
@@ -12083,6 +12553,7 @@ def get_nasdaq_futures_change_pct(indices: list = None) -> float:
     except Exception:
         pass
     return 0.0
+
 
 def check_5m_ema20_support(ticker: str) -> dict:
     """
@@ -12128,6 +12599,7 @@ def check_5m_ema20_support(ticker: str) -> dict:
         "summary": "분봉 데이터 미수신 — 기본 지지 통과",
     }
 
+
 def check_ny_opening_noise_and_nq_guard(
     ticker: str = "",
     indices: list = None,
@@ -12150,6 +12622,7 @@ def check_ny_opening_noise_and_nq_guard(
 
     nq_chg = get_nasdaq_futures_change_pct(indices)
 
+    # 1) 나스닥 -1.5% 이상 급락 시 진입 타점 연기
     if nq_chg <= float(nq_drop_limit_pct):
         msg = (
             f"🚨 [나스닥 하방 압력 진입 연기] 현재 나스닥(NQ=F) {nq_chg:+.2f}% 급락 "
@@ -12167,6 +12640,7 @@ def check_ny_opening_noise_and_nq_guard(
             "reason": msg,
         }
 
+    # 2) 뉴욕증시 개장 직후 30분(09:30 ~ 10:00 ET) 노이즈 회피
     if enforce_opening_defer and in_opening_noise_window:
         msg = (
             f"⏱️ [미국장 개장 직후 30분 노이즈 회피] 현재 뉴욕시간 {ny_now.strftime('%H:%M')} ET "
@@ -12184,6 +12658,7 @@ def check_ny_opening_noise_and_nq_guard(
             "reason": msg,
         }
 
+    # 3) 5분봉 EMA20 지지선 타점 확인
     ema_info = {}
     if ticker and require_5m_ema20:
         ema_info = check_5m_ema20_support(ticker)
@@ -12209,6 +12684,10 @@ def check_ny_opening_noise_and_nq_guard(
         "reason": f"✅ [진입 타이밍 정상] 뉴욕시간 {ny_now.strftime('%H:%M')} ET | 나스닥 {nq_chg:+.2f}% | 5분봉 EMA20 지지 통과",
     }
 
+
+# ------------------------------------------------------------------------------
+# 7. 🧩 킬러 아이디어 #1: 분할 진입 스케줄러 (Scale-In / Pyramiding: 1차 40% + 2차 60%)
+# ------------------------------------------------------------------------------
 def compute_scale_in_schedule(
     total_qty: int,
     entry_price: float,
@@ -12253,6 +12732,7 @@ def compute_scale_in_schedule(
         "expected_blended_avg_price": expected_blended_px,
     }
 
+
 def execute_scale_in_stage2_for_position(position_id: int, force_execute: bool = False) -> tuple:
     """
     1차 진입(40%)이 완료된 포지션(`STAGE1_FILLED`)에 대해 장중 추가 눌림목 타점 도달 또는
@@ -12279,6 +12759,7 @@ def execute_scale_in_stage2_for_position(position_id: int, force_execute: bool =
         if cur_px <= 0:
             cur_px = safe_float(s2_trig_px, s1_px)
 
+        # 눌림목 목표가 도달 여부 또는 강제 실행 확인
         if not force_execute and cur_px > safe_float(s2_trig_px, s1_px) * 1.015:
             return (
                 False,
@@ -12334,6 +12815,10 @@ def execute_scale_in_stage2_for_position(position_id: int, force_execute: bool =
         LOG.error("execute_scale_in_stage2_for_position error: %s", e)
         return False, f"2차 분할매수 처리 중 오류: {e}"
 
+
+# ------------------------------------------------------------------------------
+# 8. 🚨 킬러 아이디어 #2: 장마감 동시호가 청산 옵션 (Intraday Exit Protection — 15:50~16:00 ET)
+# ------------------------------------------------------------------------------
 def evaluate_intraday_close_protection(
     indices: list = None,
     ny_now: datetime = None,
@@ -12399,6 +12884,10 @@ def evaluate_intraday_close_protection(
         "summary": status_msg,
     }
 
+
+# ------------------------------------------------------------------------------
+# 9. 💰 킬러 아이디어 #3: 수익금 자동 인출 & 복리 재투자 토글 (Profit Harvesting Vault)
+# ------------------------------------------------------------------------------
 def db_get_profit_vault_status() -> dict:
     """수익금 자동 인출(파킹통장 격리) 및 복리 재투자 금고 상태를 조회합니다."""
     init_robot_db()
@@ -12438,6 +12927,7 @@ def db_get_profit_vault_status() -> dict:
         LOG.debug("db_get_profit_vault_status error: %s", e)
         return default_v
 
+
 def db_update_profit_vault_settings(
     auto_harvest_enabled: bool = True,
     harvest_ratio_pct: float = 30.0,
@@ -12475,6 +12965,7 @@ def db_update_profit_vault_settings(
         )
     except Exception as e:
         return False, f"파킹통장 설정 저장 실패: {e}"
+
 
 def process_profit_harvesting(ticker: str, realized_pnl_usd: float) -> dict:
     """
@@ -12554,6 +13045,10 @@ def process_profit_harvesting(ticker: str, realized_pnl_usd: float) -> dict:
         "summary": msg,
     }
 
+
+# ------------------------------------------------------------------------------
+# 포지션 조회 / 청산 / 대기열 전체 사이클 실행 엔진
+# ------------------------------------------------------------------------------
 def db_get_open_robot_positions() -> list:
     """현재 스윙 로봇이 보유 중인 오픈 포지션 목록을 반환합니다."""
     init_robot_db()
@@ -12596,6 +13091,7 @@ def db_get_open_robot_positions() -> list:
         LOG.debug("db_get_open_robot_positions error: %s", e)
     return out
 
+
 def db_get_closed_robot_positions(limit: int = 20) -> list:
     """청산 완료된 스윙 로봇 포지션 내역을 반환합니다."""
     init_robot_db()
@@ -12626,6 +13122,7 @@ def db_get_closed_robot_positions(limit: int = 20) -> list:
     except Exception as e:
         LOG.debug("db_get_closed_robot_positions error: %s", e)
     return out
+
 
 def close_robot_position(
     position_id: int,
@@ -12696,6 +13193,7 @@ def close_robot_position(
         LOG.error("close_robot_position error: %s", e)
         return False, f"포지션 청산 중 오류 발생: {e}", {}
 
+
 def execute_robot_queue_cycle(
     indices: list = None,
     bypass_opening_30m_guard: bool = False,
@@ -12722,6 +13220,7 @@ def execute_robot_queue_cycle(
         qid = q["id"]
         tk = q["ticker"]
 
+        # Step 1: 16개 전담팀 사전 감시망 & 쿼터켈리 비중 일임 심사
         audit = evaluate_robot_pre_trade_audit(
             ticker=tk,
             capital_usd=compounding_seed,
@@ -12739,6 +13238,7 @@ def execute_robot_queue_cycle(
             cycle_reports.append({"ticker": tk, "step": "16_TEAM_AUDIT", "executed": False, "detail": audit.get("reason")})
             continue
 
+        # Step 2: 종목별 14일 동적 ATR 폭등/폭락 패스 필터
         atr_gate = evaluate_dynamic_atr_gap_filter(tk)
         if not atr_gate.get("passed"):
             db_update_queue_status(
@@ -12751,6 +13251,7 @@ def execute_robot_queue_cycle(
             cycle_reports.append({"ticker": tk, "step": "DYNAMIC_ATR_FILTER", "executed": False, "detail": atr_gate.get("reason")})
             continue
 
+        # Step 3: 미국장 개장 초반 30분(09:30~10:00 ET) 노이즈 회피 & 나스닥 -1.5% 연기 & 5분봉 EMA20 지지
         timing_gate = check_ny_opening_noise_and_nq_guard(
             ticker=tk,
             indices=idx_list,
@@ -12769,6 +13270,7 @@ def execute_robot_queue_cycle(
             cycle_reports.append({"ticker": tk, "step": "OPENING_AND_NQ_GUARD", "executed": False, "detail": timing_gate.get("reason")})
             continue
 
+        # Step 4: 킬러 아이디어 #7 — 분할 진입 스케줄러 (1차 40% 즉시 주문 + 2차 60% 눌림목 예약)
         sched = compute_scale_in_schedule(
             total_qty=audit["total_target_qty"],
             entry_price=audit["current_price"],
@@ -12847,6 +13349,10 @@ def execute_robot_queue_cycle(
 
     return cycle_reports
 
+
+# ------------------------------------------------------------------------------
+# 통합 UI 렌더러 (Tab 11: 🤖 스윙자동매매봇)
+# ------------------------------------------------------------------------------
 def render_tab_swing_robot(indices: list = None, usd_krw: float = 1400.0):
     """
     Streamlit Tab 11: 스윙 전용 AI 자동매매 로봇 컨트롤 센터 (6대 핵심 아키텍처 + 3대 킬러 아이디어 통합 UI)
@@ -13058,6 +13564,8 @@ def render_tab_swing_robot(indices: list = None, usd_krw: float = 1400.0):
     with sub5:
         render_broker_config_ui()
 
+
+
 def main():
     btc_price, btc_change, usd_krw = get_top_bar_data()
     eff_krw = usd_krw if usd_krw > 0 else CFG["usd_krw_fallback"]
@@ -13080,22 +13588,10 @@ def main():
 </div>""")
     render_html(f"""<div class="index-wrapper">{"".join(idx_cards)}</div>""")
 
-    if st.session_state.get("_trigger_switch_to_tab1"):
-        st.session_state["_trigger_switch_to_tab1"] = False
-        st.components.v1.html(
-            """<script>
-            try {
-                const tabs = window.parent.document.querySelectorAll('button[data-baseweb="tab"]');
-                if (tabs && tabs.length > 0) { tabs[0].click(); }
-            } catch (e) {}
-            </script>""",
-            height=0,
-        )
-
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
         "📊 개별분석", "🛡️ 보유모니터", "🎯 스캐너", "🧪 백테스트",
         "🔬 WFA검증", "📊 리스크", "📓 매매일지",
-        "🤖 모의매매", "🔍 팀점검센터", "🧬 진화연구소",
+        "🤖 모의매매", "🔍 팀점검센터", "🧬 진화연구소", "🤖 스윙자동매매봇",
     ])
     def _safe_run_tab(tab_fn, *args, tab_label=""):
         try:
@@ -13130,6 +13626,9 @@ def main():
         _safe_run_tab(render_tab_audit, eff_krw, tab_label="팀점검센터")
     with tab10:
         _safe_run_tab(render_tab_evolution, eff_krw, tab_label="진화연구소")
+    with tab11:
+        _safe_run_tab(render_tab_swing_robot, indices, eff_krw, tab_label="스윙자동매매봇")
+
 
 if __name__ == "__main__":
     main()
